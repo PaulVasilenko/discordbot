@@ -2,28 +2,45 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"github.com/facebookgo/flagconfig"
+	"io/ioutil"
+	"mime"
+	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path"
+	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
 
-const ImageRegex string = `(https?:\/\/.*\.(?:png|jpg))`
+const (
+	ImageRegex      string = `(https?:\/\/.*\.(?:png|jpg))`
+	DownloadTimeout int    = 60
+)
 
 var (
 	token    = flag.String("token", "", "Bot Token")
-	basePath = "/var/www/static/"
 	baseUrl  = flag.String("baseUrl", "", "Base url of local server where static is saved")
+	faces    = flag.String("faces", "/home/sites/faces", "Faces to add to photo")
+	cascade  = flag.String("cascade", "/home/sites/faces/cascade.xml", "Haar cascade to find faces")
+	basePath = "/var/www/static"
 )
 
 func main() {
 	flag.Parse()
+	flagconfig.Parse()
+
 	runtime.GOMAXPROCS(4)
 	fmt.Printf("GOMAXPROCS is %d\n", runtime.GOMAXPROCS(0))
 
@@ -39,7 +56,7 @@ func main() {
 		return
 	}
 
-	// dg.AddHandler(ready)
+	dg.AddHandler(ready)
 	dg.AddHandler(messageCreate)
 
 	err = dg.Open()
@@ -85,7 +102,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
-		if imageString := regexpImage.FindString(m.Content); imageString == "" {
+		var imageString string
+
+		if imageString = regexpImage.FindString(m.Content); imageString == "" {
 			s.ChannelMessageEdit(m.ChannelID, message.ID, "Please, provide image link with PNG or JPEG extension")
 
 			return
@@ -96,14 +115,22 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		for {
 			time.Sleep(200 * time.Millisecond)
 			select {
-			case <-imgCh:
-				s.ChannelMessageEdit(m.ChannelID, message.ID, "Processed")
+			case image := <-imgCh:
+				s.ChannelMessageEdit(m.ChannelID, message.ID, "Processed file: "+*baseUrl+image)
+
+				if image == "" {
+					s.ChannelMessageEdit(
+						m.ChannelID,
+						message.ID,
+						"Error during processing, please, notify PandaSam about it")
+				}
+
 				return
 			default:
 				fmt.Println("Waiting for image being procesed")
 				ticksWaiting += 1
 				s.ChannelMessageEdit(m.ChannelID, message.ID, "Processing"+strings.Repeat(".", ticksWaiting%4))
-				if ticksWaiting > 10 {
+				if ticksWaiting > 50 {
 					s.ChannelMessageEdit(m.ChannelID, message.ID, "Processing time exceeed")
 					return
 				}
@@ -118,20 +145,39 @@ func processImage(imgCh chan<- string, imageString string) {
 	fmt.Println("Started image processing")
 	defer fmt.Println("Finished image processing")
 
-	downloadedFileName := downloadFromUrl(
+	downloadedFilename, downloadedFilePath, err := downloadFromUrl(imageString, "", basePath)
 
-	time.Sleep(2 * time.Second)
+	if err != nil {
+		fmt.Println(err)
+		imgCh <- ""
+		return
+	}
+
+	outputFilePath := basePath + "/processed_" + downloadedFilename
+
+	args := []string{
+		"--faces", *faces,
+		"--haar", *cascade,
+		downloadedFilePath, " > ", outputFilePath}
+
+	cmd := exec.Command("chrisify", args...)
+
+	out, err := cmd.CombinedOutput()
+
+	if err != nil {
+		fmt.Println("Non-zero exit code: " + err.Error() + ", " + string(out))
+	}
+
 	fmt.Println("Image processed, putting in channel")
 
-	imgCh <- ""
+	imgCh <- "processed_" + downloadedFilename
 	return
 }
 
-func downloadFromUrl(dUrl string, filename string, path string, channelId string, userId string, fileTime time.Time) bool {
+func downloadFromUrl(dUrl string, filename string, path string) (string, string, error) {
 	err := os.MkdirAll(path, 755)
 	if err != nil {
-		fmt.Println("Error while creating folder", path, "-", err)
-		return false
+		return "", "", errors.New(fmt.Sprintln("Error while creating folder", path, "-", err))
 	}
 
 	timeout := time.Duration(time.Duration(DownloadTimeout) * time.Second)
@@ -140,14 +186,12 @@ func downloadFromUrl(dUrl string, filename string, path string, channelId string
 	}
 	request, err := http.NewRequest("GET", dUrl, nil)
 	if err != nil {
-		fmt.Println("Error while downloading", dUrl, "-", err)
-		return false
+		return "", "", errors.New(fmt.Sprintln("Error while downloading", dUrl, "-", err))
 	}
 	request.Header.Add("Accept-Encoding", "identity")
 	response, err := client.Do(request)
 	if err != nil {
-		fmt.Println("Error while downloading", dUrl, "-", err)
-		return false
+		return "", "", errors.New(fmt.Sprintln("Error while downloading", dUrl, "-", err))
 	}
 	defer response.Body.Close()
 
@@ -185,29 +229,31 @@ func downloadFromUrl(dUrl string, filename string, path string, channelId string
 	}
 
 	bodyOfResp, err := ioutil.ReadAll(response.Body)
+
 	if err != nil {
-		fmt.Println("Could not read response", dUrl, "-", err)
-		return false
+		return "", "", errors.New(fmt.Sprintln("Could not read response", dUrl, "-", err))
 	}
+
 	contentType := http.DetectContentType(bodyOfResp)
 	contentTypeParts := strings.Split(contentType, "/")
+
 	if contentTypeParts[0] != "image" && contentTypeParts[0] != "video" {
-		fmt.Println("No image or video found at", dUrl)
-		return true
+		return "", "", errors.New(fmt.Sprintln("No image or video found at", dUrl))
 	}
 
 	err = ioutil.WriteFile(completePath, bodyOfResp, 0644)
+
 	if err != nil {
-		fmt.Println("Error while writing to disk", dUrl, "-", err)
-		return false
+		return "", "", errors.New(fmt.Sprintln("Error while writing to disk", dUrl, "-", err))
 	}
 
-	err = os.Chtimes(completePath, fileTime, fileTime)
-	if err != nil {
-		fmt.Println("Error while changing date", dUrl, "-", err)
-	}
+	return filename, completePath, err
+}
 
-	return true
+func filenameFromUrl(dUrl string) string {
+	base := path.Base(dUrl)
+	parts := strings.Split(base, "?")
+	return parts[0]
 }
 
 func signalHandler(cancel context.CancelFunc) {

@@ -12,6 +12,10 @@
 			"Rev": "5835676872d7fa65ee37b32672079c4ede2c1855"
 		},
 		{
+			"ImportPath": "github.com/facebookgo/flagconfig",
+			"Rev": "22cbba9d3aa23211baf6d95cfca509a406b5c349"
+		},
+		{
 			"ImportPath": "github.com/gorilla/websocket",
 			"Comment": "v1.1.0-24-g3f3e394",
 			"Rev": "3f3e394da2b801fbe732a935ef40724762a67a07"
