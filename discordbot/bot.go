@@ -158,7 +158,7 @@ func processImage(imgCh chan<- string, imageString string) {
 	args := []string{
 		"--faces", *faces,
 		"--haar", *cascade,
-		downloadedFilePath, " > ", outputFilePath}
+		downloadedFilePath}
 
 	cmd := exec.Command("chrisify", args...)
 
@@ -167,6 +167,8 @@ func processImage(imgCh chan<- string, imageString string) {
 	if err != nil {
 		fmt.Println("Non-zero exit code: " + err.Error() + ", " + string(out))
 	}
+
+	err = ioutil.WriteFile(outputFilePath, out, 0644)
 
 	fmt.Println("Image processed, putting in channel")
 
