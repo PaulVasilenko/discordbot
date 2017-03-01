@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,7 +26,7 @@ import (
 )
 
 const (
-	ImageRegex      string = `(https?:\/\/.*\.(?:png|jpg))`
+	ImageRegex      string = `(?i)(https?:\/\/.*\.(?:png|jpe?g))`
 	DownloadTimeout int    = 60
 )
 
@@ -152,8 +153,10 @@ func processImage(imgCh chan<- string, imageString string) {
 		imgCh <- ""
 		return
 	}
-
-	outputFilePath := basePath + "/processed_" + downloadedFilename
+	splittedString := strings.Split(downloadedFilename, ".")
+	fileExtension := splittedString[len(splittedString)-1]
+	outputFileName := fmt.Sprintf("%x", md5.Sum([]byte("processed_"+downloadedFilename+time.Now().Format(time.RFC3339Nano)))) + "." + fileExtension
+	outputFilePath := basePath + "/" + outputFileName
 
 	args := []string{
 		"--faces", *faces,
@@ -172,7 +175,7 @@ func processImage(imgCh chan<- string, imageString string) {
 
 	fmt.Println("Image processed, putting in channel")
 
-	imgCh <- "processed_" + downloadedFilename
+	imgCh <- outputFileName
 	return
 }
 
