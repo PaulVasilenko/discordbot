@@ -17,20 +17,45 @@
 		},
 		{
 			"ImportPath": "github.com/gorilla/websocket",
-			"Comment": "v1.1.0-24-g3f3e394",
-			"Rev": "3f3e394da2b801fbe732a935ef40724762a67a07"
+			"Comment": "v1.1.0-27-gb258b4f",
+			"Rev": "b258b4fadb573ac412f187b9f31974ea99d32f50"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/nacl/secretbox",
-			"Rev": "453249f01cfeb54c3d549ddb75ff152ca243f9d8"
+			"Rev": "728b753d0135da6801d45a38e6f43ff55779c5c2"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/poly1305",
-			"Rev": "453249f01cfeb54c3d549ddb75ff152ca243f9d8"
+			"Rev": "728b753d0135da6801d45a38e6f43ff55779c5c2"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/salsa20/salsa",
-			"Rev": "453249f01cfeb54c3d549ddb75ff152ca243f9d8"
+			"Rev": "728b753d0135da6801d45a38e6f43ff55779c5c2"
+		},
+		{
+			"ImportPath": "gopkg.in/mgo.v2",
+			"Comment": "r2016.08.01-5-g3f83fa5",
+			"Rev": "3f83fa5005286a7fe593b055f0d7771a7dce4655"
+		},
+		{
+			"ImportPath": "gopkg.in/mgo.v2/bson",
+			"Comment": "r2016.08.01-5-g3f83fa5",
+			"Rev": "3f83fa5005286a7fe593b055f0d7771a7dce4655"
+		},
+		{
+			"ImportPath": "gopkg.in/mgo.v2/internal/json",
+			"Comment": "r2016.08.01-5-g3f83fa5",
+			"Rev": "3f83fa5005286a7fe593b055f0d7771a7dce4655"
+		},
+		{
+			"ImportPath": "gopkg.in/mgo.v2/internal/sasl",
+			"Comment": "r2016.08.01-5-g3f83fa5",
+			"Rev": "3f83fa5005286a7fe593b055f0d7771a7dce4655"
+		},
+		{
+			"ImportPath": "gopkg.in/mgo.v2/internal/scram",
+			"Comment": "r2016.08.01-5-g3f83fa5",
+			"Rev": "3f83fa5005286a7fe593b055f0d7771a7dce4655"
 		}
 	]
 }
