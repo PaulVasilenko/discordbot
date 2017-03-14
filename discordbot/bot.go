@@ -7,6 +7,10 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/facebookgo/flagconfig"
 	"github.com/paulvasilenko/discordbot/discordbot/confify"
+	"github.com/paulvasilenko/discordbot/discordbot/gamehighlighter"
+	"github.com/paulvasilenko/discordbot/discordbot/wiki"
+	"log"
+	"log/syslog"
 	"os"
 	"os/signal"
 	"runtime"
@@ -22,11 +26,19 @@ var (
 )
 
 func main() {
+	log.SetFlags(0)
+
+	syslogWriter, err := syslog.New(syslog.LOG_INFO, "discordbot")
+
+	if err == nil {
+		log.SetOutput(syslogWriter)
+	}
+
 	flag.Parse()
 	flagconfig.Parse()
 
 	runtime.GOMAXPROCS(4)
-	fmt.Printf("GOMAXPROCS is %d\n", runtime.GOMAXPROCS(0))
+	log.Printf("GOMAXPROCS is %d\n", runtime.GOMAXPROCS(0))
 
 	if *token == "" {
 		fmt.Println("No token provided")
@@ -44,10 +56,21 @@ func main() {
 	dg.AddHandler(messageCreate)
 
 	confifyStruct := confify.NewConfify(*basePath, *baseUrl, *faces)
+	confifyStruct.Subscribe(dg)
 
-	dg.AddHandler(confifyStruct.MessageCreate)
+	wikiStruct := wiki.NewWiki()
+	wikiStruct.Subscribe(dg)
+
+	gamehighlighterStruct, err := gamehighlighter.NewGameHighlighter()
+
+	if err != nil {
+		log.Println(err)
+	} else {
+		gamehighlighterStruct.Subscribe(dg)
+	}
 
 	err = dg.Open()
+
 	if err != nil {
 		fmt.Println("Error opening Discord session: ", err)
 	}
@@ -58,14 +81,13 @@ func main() {
 
 	go signalHandler(cancel)
 
-	fmt.Println("PandaBot is now running.  Press CTRL-C to exit.")
+	log.Println("PandaBot is now running.  Press CTRL-C to exit.")
 
 	<-ctx.Done()
 	return
 }
 
 func ready(s *discordgo.Session, event *discordgo.Ready) {
-	//  Set the playing status.
 	_ = s.UpdateStatus(0, "Dirty Games")
 }
 

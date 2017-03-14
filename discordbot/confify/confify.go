@@ -36,6 +36,10 @@ func NewConfify(basePath, baseUrl, faces string) *Confify {
 	return &Confify{BasePath: basePath, BaseUrl: baseUrl, Faces: faces}
 }
 
+func (c *Confify) Subscribe(s *discordgo.Session) {
+	s.AddHandler(c.MessageCreate)
+}
+
 func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if strings.HasPrefix(m.Content, "!confify") {
 		log.Println("Starting confify image")
