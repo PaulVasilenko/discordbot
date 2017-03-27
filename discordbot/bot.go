@@ -8,6 +8,7 @@ import (
 	"github.com/facebookgo/flagconfig"
 	"github.com/paulvasilenko/discordbot/discordbot/confify"
 	"github.com/paulvasilenko/discordbot/discordbot/gamehighlighter"
+	"github.com/paulvasilenko/discordbot/discordbot/homog"
 	"github.com/paulvasilenko/discordbot/discordbot/wiki"
 	"log"
 	"log/syslog"
@@ -60,6 +61,9 @@ func main() {
 
 	wikiStruct := wiki.NewWiki()
 	wikiStruct.Subscribe(dg)
+
+	homogStruct := homog.NewHomog()
+	homogStruct.Subscribe(dg)
 
 	gamehighlighterStruct, err := gamehighlighter.NewGameHighlighter()
 
