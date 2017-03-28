@@ -17,20 +17,30 @@ func (h *Homog) Subscribe(s *discordgo.Session) {
 }
 
 func (h *Homog) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	data := [3]string{"", "Гомогенезация", "женщины"}
-	args := strings.Split(m.Content, " ")
+	data := [2]string{"Гомогенезация", "женщины"}
 
-	if args[0] != "!homog" {
+	pattern := "%s? Нет, спасибо, мне нравятся %s"
+
+	var message string
+
+	switch {
+	case strings.HasPrefix(m.Content, "!homog2"):
+		pattern = "%s? Нет, спасибо, мне нравится %s"
+		message = strings.Replace(m.Content, "!homog2", "", 1)
+	case strings.HasPrefix(m.Content, "!homog"):
+		message = strings.Replace(m.Content, "!homog", "", 1)
+	default:
 		return
 	}
 
+	args := strings.Split(message, "%")
+
 	for index, value := range args {
-		if index > 2 {
-			data[2] += " " + value
-		} else {
-			data[index] = value
+		if value == "" {
+			continue
 		}
+		data[index] = value
 	}
 
-	_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("%s? Нет, спасибо, мне нравятся %s", data[1], data[2]))
+	_, _ = s.ChannelMessageSend(m.ChannelID, fmt.Sprintf(pattern, data[0], data[1]))
 }
