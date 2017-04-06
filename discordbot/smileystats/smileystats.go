@@ -1,3 +1,4 @@
+// package smileystats provides plugin to calculate usage statistics of emoticons
 package smileystats
 
 import (
@@ -15,22 +16,25 @@ const (
 	SmileyRegex                string = `(?i)(\:[\w\d\_]+\:(\:([\w\d]+\-)+[\w\d]+\:)?)`
 )
 
-// SmileyStats is struct which represents
+// SmileyStats is struct which represents plugin configuration
 type SmileyStats struct {
 	mongoDbConn *mgo.Session
 }
 
+// Smiley is a struct which represents MongoDB schema of smiley
 type Smiley struct {
 	ID       bson.ObjectId `bson:"_id,omitempty"`
 	Emoticon *Emoji        `bson:"smiley"`
 	Count    int           `bson:"count,omitempty"`
 }
 
+// Emoji contains emoji-related info
 type Emoji struct {
 	Name string `bson:"name"`
 	ID   string `bson:"id,omitempty"`
 }
 
+// NewSmileyStats returns set up instance of SmileyStats
 func NewSmileyStats(MongoDbHost, MongoDbPort string) (*SmileyStats, error) {
 	session, err := mgo.Dial("mongodb://" + MongoDbHost + ":" + MongoDbPort)
 
@@ -48,10 +52,12 @@ func NewSmileyStats(MongoDbHost, MongoDbPort string) (*SmileyStats, error) {
 	return &SmileyStats{mongoDbConn: session}, nil
 }
 
+// Subscribe is method which subscribes plugin to all needed events
 func (sm *SmileyStats) Subscribe(dg *discordgo.Session) {
 	dg.AddHandler(sm.MessageCreate)
 }
 
+// MessageCreate is method which triggers when message sent to discord chat
 func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Content == "!printtopsmileys" || m.Content == "!pts" {
 		sm.printTopStats(s, m.ChannelID)

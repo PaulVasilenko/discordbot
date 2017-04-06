@@ -1,3 +1,4 @@
+// Package homog provides homogenezation to your discord chat
 package homog
 
 import (
@@ -6,16 +7,20 @@ import (
 	"strings"
 )
 
+// Homog is a struct representing plugin with it's main configurations
 type Homog struct{}
 
+// NewHomog is a constructor function for homog
 func NewHomog() *Homog {
 	return &Homog{}
 }
 
+// Subscribe is a method to subscribe to any events required by plugin
 func (h *Homog) Subscribe(s *discordgo.Session) {
 	s.AddHandler(h.MessageCreate)
 }
 
+// MessageCreate is a event method for message sent to discord
 func (h *Homog) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	data := [2]string{"Гомогенезация", "женщины"}
 

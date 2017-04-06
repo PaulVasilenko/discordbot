@@ -36,6 +36,7 @@ func NewConfify(basePath, baseUrl, faces string) *Confify {
 	return &Confify{BasePath: basePath, BaseUrl: baseUrl, Faces: faces}
 }
 
+// Subscribe is method which subscribes plugin to all needed events
 func (c *Confify) Subscribe(s *discordgo.Session) {
 	s.AddHandler(c.MessageCreate)
 }
@@ -81,7 +82,7 @@ func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 
 				return
 			default:
-				fmt.Println("Waiting for image being procesed")
+				fmt.Println("Waiting for image being processed")
 				ticksWaiting += 1
 				s.ChannelMessageEdit(m.ChannelID, message.ID, "Processing"+strings.Repeat(".", ticksWaiting%4))
 				if ticksWaiting > 50 {
@@ -90,8 +91,6 @@ func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 				}
 			}
 		}
-
-		return
 	}
 }
 

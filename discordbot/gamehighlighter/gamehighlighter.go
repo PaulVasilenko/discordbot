@@ -100,6 +100,7 @@ func NewGameHighlighter(MongoDbHost, MongoDbPort string) (*GameHighlighter, erro
 	return &GameHighlighter{mongoDbConn: session}, nil
 }
 
+// Subscribe is a method to subscribe to any events required by plugin
 func (ghl *GameHighlighter) Subscribe(s *discordgo.Session) {
 	s.AddHandler(ghl.MessageCreate)
 }
@@ -151,7 +152,7 @@ func (ghl *GameHighlighter) MessageCreate(s *discordgo.Session, m *discordgo.Mes
 	}
 
 	if err != nil {
-		_, _ = s.ChannelMessageSend(m.ChannelID, "Error occured, notify PandaSam about it: "+err.Error())
+		_, _ = s.ChannelMessageSend(m.ChannelID, "Error occurred, notify PandaSam about it: "+err.Error())
 	}
 
 	_, _ = s.ChannelMessageSend(m.ChannelID, res)
