@@ -1,3 +1,4 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/PaulVasilenko/discordbot)](https://goreportcard.com/report/github.com/PaulVasilenko/discordbot)
 # Panda Bot
 
 ## Installation
