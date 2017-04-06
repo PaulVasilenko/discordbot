@@ -2,7 +2,6 @@ package gamehighlighter
 
 import (
 	"errors"
-	"flag"
 	"github.com/bwmarrin/discordgo"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
@@ -39,11 +38,6 @@ const (
 	CommandNotInLobbyHighlightShort string = "!hfnl"
 )
 
-var (
-	MongoDbHost = flag.String("mongoDbHost", "127.0.0.1", "Mongo Db Host")
-	MongoDbPort = flag.String("mongoDbPort", "27017", "Mongo Db Port")
-)
-
 // Confify is struct which represents Confify plugin with it's configurations
 type GameHighlighter struct {
 	mongoDbConn *mgo.Session
@@ -69,8 +63,8 @@ type commandParameters struct {
 	author      *discordgo.User
 }
 
-func NewGameHighlighter() (*GameHighlighter, error) {
-	session, err := mgo.Dial("mongodb://" + *MongoDbHost + ":" + *MongoDbPort)
+func NewGameHighlighter(MongoDbHost, MongoDbPort string) (*GameHighlighter, error) {
+	session, err := mgo.Dial("mongodb://" + MongoDbHost + ":" + MongoDbPort)
 
 	collectionSubsIndex := mgo.Index{
 		Key:      []string{"Subscribers.ID"},

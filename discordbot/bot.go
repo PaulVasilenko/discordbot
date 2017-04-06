@@ -9,6 +9,7 @@ import (
 	"github.com/paulvasilenko/discordbot/discordbot/confify"
 	"github.com/paulvasilenko/discordbot/discordbot/gamehighlighter"
 	"github.com/paulvasilenko/discordbot/discordbot/homog"
+	"github.com/paulvasilenko/discordbot/discordbot/smileystats"
 	"github.com/paulvasilenko/discordbot/discordbot/wiki"
 	"log"
 	"log/syslog"
@@ -20,11 +21,17 @@ import (
 )
 
 var (
-	token    = flag.String("token", "", "Bot Token")
-	baseUrl  = flag.String("baseUrl", "", "Base url of local server where static is saved")
-	faces    = flag.String("faces", "/home/sites/faces", "Faces to add to photo")
-	basePath = flag.String("basePath", "/var/www/static", "Path where files should be saved")
+	token       = flag.String("token", "", "Bot Token")
+	baseUrl     = flag.String("baseUrl", "", "Base url of local server where static is saved")
+	faces       = flag.String("faces", "/home/sites/faces", "Faces to add to photo")
+	basePath    = flag.String("basePath", "/var/www/static", "Path where files should be saved")
+	MongoDbHost = flag.String("mongoDbHost", "127.0.0.1", "Mongo Db Host")
+	MongoDbPort = flag.String("mongoDbPort", "27017", "Mongo Db Port")
 )
+
+type Subscriber interface {
+	Subscribe(s *discordgo.Session)
+}
 
 func main() {
 	log.SetFlags(0)
@@ -56,21 +63,29 @@ func main() {
 	dg.AddHandler(ready)
 	dg.AddHandler(messageCreate)
 
-	confifyStruct := confify.NewConfify(*basePath, *baseUrl, *faces)
-	confifyStruct.Subscribe(dg)
+	plugins := []Subscriber{
+		confify.NewConfify(*basePath, *baseUrl, *faces),
+		wiki.NewWiki(),
+		homog.NewHomog()}
 
-	wikiStruct := wiki.NewWiki()
-	wikiStruct.Subscribe(dg)
+	for _, v := range plugins {
+		v.Subscribe(dg)
+	}
 
-	homogStruct := homog.NewHomog()
-	homogStruct.Subscribe(dg)
-
-	gamehighlighterStruct, err := gamehighlighter.NewGameHighlighter()
+	gamehighlighterStruct, err := gamehighlighter.NewGameHighlighter(*MongoDbHost, *MongoDbPort)
 
 	if err != nil {
 		log.Println(err)
 	} else {
 		gamehighlighterStruct.Subscribe(dg)
+	}
+
+	smileystatsStruct, err := smileystats.NewSmileyStats(*MongoDbHost, *MongoDbPort)
+
+	if err != nil {
+		log.Println(err)
+	} else {
+		smileystatsStruct.Subscribe(dg)
 	}
 
 	err = dg.Open()
