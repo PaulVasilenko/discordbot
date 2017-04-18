@@ -8,12 +8,15 @@ import (
 	"gopkg.in/mgo.v2/bson"
 	"log"
 	"regexp"
+	"strings"
 )
 
 const (
 	MongoDatabaseSmileyStats   string = "smileystats"
 	MongoCollectionSmileyStats string = "smileystats"
+	MongoCollectionBannedUsers string = "bannedusers"
 	SmileyRegex                string = `(?i)(\:[\w\d\_]+\:(\:([\w\d]+\-)+[\w\d]+\:)?)`
+	UserRegex		   string = `(?i)(@.+#\d+)`
 )
 
 // SmileyStats is struct which represents plugin configuration
@@ -34,6 +37,13 @@ type Emoji struct {
 	ID   string `bson:"id,omitempty"`
 }
 
+// User represent user instance
+type User struct {
+	ID        bson.ObjectId `bson:"_id,omitempty"`
+	DiscordID string 	`bson:"id"`
+	Username  string 	`bson:"username"`
+}
+
 // NewSmileyStats returns set up instance of SmileyStats
 func NewSmileyStats(MongoDbHost, MongoDbPort string) (*SmileyStats, error) {
 	session, err := mgo.Dial("mongodb://" + MongoDbHost + ":" + MongoDbPort)
@@ -47,7 +57,13 @@ func NewSmileyStats(MongoDbHost, MongoDbPort string) (*SmileyStats, error) {
 		Unique:   true,
 		DropDups: true}
 
+	bannedUserUniqueIndex := mgo.Index{
+		Key:      []string{"id"},
+		Unique:   true,
+		DropDups: true}
+
 	session.DB(MongoDatabaseSmileyStats).C(MongoCollectionSmileyStats).EnsureIndex(smileyUniqueIndex)
+	session.DB(MongoDatabaseSmileyStats).C(MongoCollectionBannedUsers).EnsureIndex(bannedUserUniqueIndex)
 
 	return &SmileyStats{mongoDbConn: session}, nil
 }
@@ -61,6 +77,18 @@ func (sm *SmileyStats) Subscribe(dg *discordgo.Session) {
 func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Content == "!printtopsmileys" || m.Content == "!pts" {
 		sm.printTopStats(s, m.ChannelID)
+
+		return
+	}
+
+	if strings.HasPrefix(m.Content, "!printsmileystats") || strings.HasPrefix(m.Content, "!pss") {
+		sm.printSmileyStats(s, m)
+
+		return
+	}
+
+	if strings.HasPrefix(m.Content, "!smileyban") || strings.HasPrefix(m.Content, "!sb") {
+		sm.smileyBan(s, m)
 
 		return
 	}
@@ -159,4 +187,36 @@ func (sm *SmileyStats) printTopStats(s *discordgo.Session, channelID string) {
 	}
 
 	s.ChannelMessageSend(channelID, stats)
+}
+
+func (sm *SmileyStats) printSmileyStats(s *discordgo.Session, m *discordgo.MessageCreate) {
+	args := strings.Split(m.Content, " ")
+
+	if len(args) < 2 {
+		s.ChannelMessageSend(m.ChannelID, "You should provide smileyName as second argument")
+
+		return
+	}
+
+	var smiley *Smiley
+
+	sm.mongoDbConn.DB(MongoDatabaseSmileyStats).C(MongoCollectionSmileyStats).
+		Find(bson.M{"smiley.name": args[1]}).One(smiley)
+
+	if smiley == nil {
+		s.ChannelMessageSend(m.ChannelID, "Cannot find smiley in database")
+
+		return
+	}
+}
+
+func (sm *SmileyStats) smileyBan(s *discordgo.Session, m *discordgo.MessageCreate) {
+	args := strings.Split(m.Content, " ")
+
+	if len(args) < 2 {
+		s.ChannelMessageSend(m.ChannelID, "You highlight user as second argument")
+
+		return
+	}
+
 }

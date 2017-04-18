@@ -11,6 +11,7 @@ import (
 	"github.com/paulvasilenko/discordbot/discordbot/homog"
 	"github.com/paulvasilenko/discordbot/discordbot/smileystats"
 	"github.com/paulvasilenko/discordbot/discordbot/wiki"
+	"github.com/paulvasilenko/discordbot/discordbot/chid"
 	"log"
 	"log/syslog"
 	"os"
@@ -107,7 +108,7 @@ func main() {
 }
 
 func ready(s *discordgo.Session, event *discordgo.Ready) {
-	_ = s.UpdateStatus(0, "Dirty Games")
+	_ = s.UpdateStatus(0, "ArtShadow gay ")
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
