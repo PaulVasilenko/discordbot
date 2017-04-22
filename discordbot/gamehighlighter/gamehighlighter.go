@@ -63,6 +63,7 @@ type commandParameters struct {
 	author      *discordgo.User
 }
 
+// NewGameHighlighter returns struct providing discordgo bot plugin
 func NewGameHighlighter(MongoDbHost, MongoDbPort string) (*GameHighlighter, error) {
 	session, err := mgo.Dial("mongodb://" + MongoDbHost + ":" + MongoDbPort)
 

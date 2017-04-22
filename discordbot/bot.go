@@ -9,6 +9,7 @@ import (
 	"github.com/paulvasilenko/discordbot/discordbot/confify"
 	"github.com/paulvasilenko/discordbot/discordbot/gamehighlighter"
 	"github.com/paulvasilenko/discordbot/discordbot/homog"
+	"github.com/paulvasilenko/discordbot/discordbot/shoutlikeart"
 	"github.com/paulvasilenko/discordbot/discordbot/smileystats"
 	"github.com/paulvasilenko/discordbot/discordbot/wiki"
 	"log"
@@ -66,6 +67,7 @@ func main() {
 	plugins := []Subscriber{
 		confify.NewConfify(*basePath, *baseUrl, *faces),
 		wiki.NewWiki(),
+		shoutlikeart.NewShoutLikeArt(),
 		homog.NewHomog()}
 
 	for _, v := range plugins {

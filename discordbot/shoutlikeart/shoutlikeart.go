@@ -3,24 +3,31 @@ package shoutlikeart
 
 import (
 	"github.com/bwmarrin/discordgo"
-	"log"
+	"fmt"
+	"time"
 )
 
 type ShoutLikeArt struct {}
 
-func (sla *ShoutLikeArt) Subscribe(dg discordgo.Session) {
+func NewShoutLikeArt() *ShoutLikeArt {
+	return &ShoutLikeArt{}
+}
+
+func (sla *ShoutLikeArt) Subscribe(dg *discordgo.Session) {
 	dg.AddHandler(sla.MessageCreate)
 }
 
-func (sla *ShoutLikeArt) MessageCreate(s discordgo.Session, m discordgo.MessageCreate) {
+func (sla *ShoutLikeArt) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Content != "!sla" {
+		fmt.Println("WTF? ", m.Content)
+
 		return
 	}
 
 	channel, err := s.Channel(m.ChannelID)
 
 	if err != nil {
-		log.Println("Unable to get channel info: ", err)
+		fmt.Println("Unable to get channel info: ", err)
 
 		return
 	}
@@ -28,22 +35,53 @@ func (sla *ShoutLikeArt) MessageCreate(s discordgo.Session, m discordgo.MessageC
 	guild, err := s.Guild(channel.GuildID)
 
 	if err != nil {
-		log.Println("Unable to get guild info: ", err)
+		fmt.Println("Unable to get guild info: ", err)
 
 		return
 	}
 
-	var voiceChannel discordgo.Channel
+	channelID := ""
 
-	for _, voiceChannel = range guild.Channels {
-		break
+	for _, vs := range guild.VoiceStates {
+		if vs.UserID == m.Author.ID {
+			channelID = vs.ChannelID
+			break
+		}
 	}
 
-	_, err = s.ChannelVoiceJoin(guild.ID, voiceChannel.ID, false, true)
+	if channelID == "" {
+		s.ChannelMessageSend(m.ChannelID, "You aren't in a voice channel")
+
+		return
+	}
+
+	vc, err := s.ChannelVoiceJoin(guild.ID, channelID, false, true)
 
 	if err != nil {
-		log.Println(err)
+		fmt.Println("Failed to join voice channel: ", err)
 
 		return
 	}
+
+	// Sleep for a specified amount of time before playing the sound
+	time.Sleep(250 * time.Millisecond)
+
+	// Start speaking.
+	_ = vc.Speaking(true)
+
+	//// Send the buffer data.
+	//for i := 0; i < 10000; i++ {
+	//	//vc.OpusSend <- []byte{127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127}
+	//}
+
+	// Stop speaking
+	_ = vc.Speaking(false)
+
+	// Sleep for a specificed amount of time before ending.
+	time.Sleep(250 * time.Millisecond)
+
+	// Disconnect from the provided voice channel.
+	_ = vc.Disconnect()
+
+	return
 }
