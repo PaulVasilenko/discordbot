@@ -42,3 +42,20 @@ All commands require game code. Currently supported gamecodes
 ### Smiley Stats
 
 Calculate the number of Smileys Used in messages
+
+#### Commands
+
+ - `!pts` - Prints Top 10 the most popular emojis
+ - `!pts [emoticon]` - Prints Top 10 users of emoji
+
+### Quoter
+
+Provides quoting feature to discord
+
+#### How to use it
+
+When someone writes message (or block of messages) and you want to quote it,
+you should *react* to first message in block using copyright emoji (`:copyright:` or ©)
+
+Then bot reads 100 messages after this and prints only block of messages, which are belonged to only one user
+Algorithm stops when appears message which is not belonged to user.
