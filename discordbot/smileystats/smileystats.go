@@ -2,54 +2,41 @@
 package smileystats
 
 import (
+	"crypto/md5"
+	"database/sql"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
-	"gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/patrickmn/go-cache"
 	"log"
 	"regexp"
+	"strings"
+	"time"
 )
 
 const (
-	MongoDatabaseSmileyStats   string = "smileystats"
-	MongoCollectionSmileyStats string = "smileystats"
-	SmileyRegex                string = `(?i)(\:[\w\d\_]+\:(\:([\w\d]+\-)+[\w\d]+\:)?)`
+	DatabaseSmileyStats string = "smileystats"
+	SmileyRegex         string = `(?i)(\:[\w\d\_]+\:(\:([\w\d]+\-)+[\w\d]+\:)?)`
 )
 
 // SmileyStats is struct which represents plugin configuration
 type SmileyStats struct {
-	mongoDbConn *mgo.Session
-}
-
-// Smiley is a struct which represents MongoDB schema of smiley
-type Smiley struct {
-	ID       bson.ObjectId `bson:"_id,omitempty"`
-	Emoticon *Emoji        `bson:"smiley"`
-	Count    int           `bson:"count,omitempty"`
-}
-
-// Emoji contains emoji-related info
-type Emoji struct {
-	Name string `bson:"name"`
-	ID   string `bson:"id,omitempty"`
+	dbConn *sql.DB
+	cache  *cache.Cache
 }
 
 // NewSmileyStats returns set up instance of SmileyStats
-func NewSmileyStats(MongoDbHost, MongoDbPort string) (*SmileyStats, error) {
-	session, err := mgo.Dial("mongodb://" + MongoDbHost + ":" + MongoDbPort)
+func NewSmileyStats(MysqlDbHost, MysqlDbPort, MysqlDbUser, MysqlDbPassword string) (*SmileyStats, error) {
+	dsn := MysqlDbUser + ":" + MysqlDbPassword + "@tcp(" + MysqlDbHost + ":" + MysqlDbPort + ")/" + DatabaseSmileyStats
+	db, err := sql.Open("mysql", dsn)
 
 	if err != nil {
 		return nil, err
 	}
 
-	smileyUniqueIndex := mgo.Index{
-		Key:      []string{"smiley.name"},
-		Unique:   true,
-		DropDups: true}
+	c := cache.New(5*time.Second, 10*time.Second)
 
-	session.DB(MongoDatabaseSmileyStats).C(MongoCollectionSmileyStats).EnsureIndex(smileyUniqueIndex)
-
-	return &SmileyStats{mongoDbConn: session}, nil
+	return &SmileyStats{dbConn: db, cache: c}, nil
 }
 
 // Subscribe is method which subscribes plugin to all needed events
@@ -60,7 +47,9 @@ func (sm *SmileyStats) Subscribe(dg *discordgo.Session) {
 // MessageCreate is method which triggers when message sent to discord chat
 func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Content == "!printtopsmileys" || m.Content == "!pts" {
-		sm.printTopStats(s, m.ChannelID)
+		if err := sm.printTopStats(s, m.ChannelID); err != nil {
+			log.Println("printTopStats error: ", err)
+		}
 
 		return
 	}
@@ -78,6 +67,10 @@ func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageC
 	}
 
 	smileys := regexpSmiley.FindAllString(m.Content, -1)
+
+	if strings.HasPrefix(m.Content, "!pts") {
+		sm.printSmileyStat(s, smileys[0], m.ChannelID)
+	}
 
 	if smileys == nil {
 		return
@@ -99,20 +92,24 @@ func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageC
 		return
 	}
 
-	coll := sm.mongoDbConn.DB(MongoDatabaseSmileyStats).C(MongoCollectionSmileyStats)
-
 	// Server specific IDs
 	// TODO: Improve speed of algorithm
-	for _, emoji := range guild.Emojis {
+	for i, smiley := range smileys {
 		idsToRemove := []int{}
+		hash := md5.Sum([]byte("Smiley_" + m.Author.Username + smiley))
 
-		for i, smiley := range smileys {
+		if _, ok := sm.cache.Get(string(hash[:])); ok == true {
+			continue
+		}
+
+		for _, emoji := range guild.Emojis {
 			if smiley == (":" + emoji.Name + ":") {
-				smileyStruct := &Smiley{Emoticon: &Emoji{Name: smiley, ID: emoji.ID}, Count: 0}
+				if err := sm.insertSmiley(emoji.ID, smiley, m.Author.ID, m.Author.Username); err != nil {
+					log.Println("Smiley Insert Failed: ", err)
 
-				coll.Insert(smileyStruct)
-				coll.Update(smileyStruct, bson.M{"$inc": bson.M{"count": 1}})
-
+					return
+				}
+				sm.cache.SetDefault(string(hash[:]), string(hash[:]))
 				idsToRemove = append(idsToRemove, i)
 			}
 		}
@@ -128,35 +125,116 @@ func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageC
 
 	// Common ids
 	for _, smiley := range smileys {
-		smileyStruct := &Smiley{Emoticon: &Emoji{Name: smiley, ID: ""}, Count: 0}
+		hash := md5.Sum([]byte("Smiley_" + m.Author.Username + smiley))
 
-		coll.Insert(smileyStruct)
-		coll.Update(smileyStruct, bson.M{"$inc": bson.M{"count": 1}})
+		if _, ok := sm.cache.Get(string(hash[:])); ok == true {
+			continue
+		}
+
+		if err := sm.insertSmiley("", smiley, m.Author.ID, m.Author.Username); err != nil {
+			log.Println("Smiley Insert Failed: ", err)
+
+			return
+		}
+
+		sm.cache.SetDefault(string(hash[:]), string(hash[:]))
 	}
 }
 
-func (sm *SmileyStats) printTopStats(s *discordgo.Session, channelID string) {
-	var topSmileys []Smiley
+func (sm *SmileyStats) insertSmiley(emojiID, emojiName, authorID, authorName string) error {
+	sqlString := `
+		INSERT IGNORE INTO smileyHistory
+			(emojiId, emojiName, userId, userName, createDatetime)
+		VALUES
+			(?, ?, ?, ?, ?);`
 
-	sm.mongoDbConn.DB(MongoDatabaseSmileyStats).C(MongoCollectionSmileyStats).
-		Find(bson.M{}).
-		Sort("-count").
-		Limit(10).
-		All(&topSmileys)
+	_, err := sm.dbConn.Query(
+		sqlString,
+		emojiID,
+		emojiName,
+		authorID,
+		authorName,
+		time.Now().Format("2006-01-02 15:04:05"),
+	)
 
-	stats := "Smileys top:\n "
+	return err
+}
 
-	for i, v := range topSmileys {
+func (sm *SmileyStats) printTopStats(s *discordgo.Session, channelID string) error {
+	sqlString := `
+	SELECT COUNT(emojiId) as usages, emojiName, emojiId
+	FROM smileyHistory
+	GROUP BY emojiName ORDER BY usages DESC LIMIT 10`
+
+	rows, err := sm.dbConn.Query(sqlString)
+
+	if err != nil {
+		return err
+	}
+
+	stats := "Smileys top:\n"
+
+	i := 0
+	for rows.Next() {
+		i += 1
+
+		var count, emoticonName, emoticonId string
+		rows.Scan(&count, &emoticonName, &emoticonId)
+
 		smileyString := ""
 
-		if v.Emoticon.ID != "" {
-			smileyString = fmt.Sprintf("<%s%v>", v.Emoticon.Name, v.Emoticon.ID)
+		if emoticonId != "" {
+			smileyString = fmt.Sprintf("<%s%v>", emoticonName, emoticonId)
 		} else {
-			smileyString = v.Emoticon.Name
+			smileyString = emoticonName
 		}
 
-		stats += fmt.Sprintf("#%d - %s %d usages\n", i+1, smileyString, v.Count)
+		stats += fmt.Sprintf("#%d - %s %s usages\n", i, smileyString, count)
 	}
 
 	s.ChannelMessageSend(channelID, stats)
+
+	return nil
+}
+
+func (sm *SmileyStats) printSmileyStat(s *discordgo.Session, smiley, channelID string) error {
+	sqlString := `
+	SELECT COUNT(emojiId) as usages, emojiName, emojiId, userName
+	FROM smileyHistory
+	WHERE emojiName = ?
+	GROUP BY userName ORDER BY usages DESC LIMIT 10`
+
+	rows, err := sm.dbConn.Query(sqlString, smiley)
+
+	if err != nil {
+		return err
+	}
+
+	stats := ""
+
+	i := 0
+	for rows.Next() {
+		i += 1
+
+		var count, emoticonName, emoticonId, userName string
+		rows.Scan(&count, &emoticonName, &emoticonId, &userName)
+
+		if i == 1 {
+			smileyString := ""
+
+			if emoticonId != "" {
+				smileyString = fmt.Sprintf("<%s%v>", emoticonName, emoticonId)
+			} else {
+				smileyString = emoticonName
+			}
+
+			stats += fmt.Sprintf("Smiley %s top:\n", smileyString)
+		}
+
+		stats += fmt.Sprintf("#%d - %s %s usages\n", i, userName, count)
+	}
+
+	s.ChannelMessageSend(channelID, stats)
+
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/paulvasilenko/discordbot/discordbot/confify"
 	"github.com/paulvasilenko/discordbot/discordbot/gamehighlighter"
 	"github.com/paulvasilenko/discordbot/discordbot/homog"
+	"github.com/paulvasilenko/discordbot/discordbot/quoter"
 	"github.com/paulvasilenko/discordbot/discordbot/smileystats"
 	"github.com/paulvasilenko/discordbot/discordbot/wiki"
 	"log"
@@ -27,6 +28,10 @@ var (
 	basePath    = flag.String("basePath", "/var/www/static", "Path where files should be saved")
 	MongoDbHost = flag.String("mongoDbHost", "127.0.0.1", "Mongo Db Host")
 	MongoDbPort = flag.String("mongoDbPort", "27017", "Mongo Db Port")
+	MySQLDbHost = flag.String("mysqlDbHost", "127.0.0.1", "Mysql Db Host")
+	MySQLDbPort = flag.String("mysqlDbPort", "3306", "Mysql Db Port")
+	MySQLDbUser = flag.String("mysqlDbUser", "artshadow", "Mysql Db Port")
+	MySQLDbPass = flag.String("mysqlDbPass", "", "Mysql Db Port")
 )
 
 type Subscriber interface {
@@ -66,6 +71,7 @@ func main() {
 	plugins := []Subscriber{
 		confify.NewConfify(*basePath, *baseUrl, *faces),
 		wiki.NewWiki(),
+		quoter.NewQuoter(),
 		homog.NewHomog()}
 
 	for _, v := range plugins {
@@ -80,7 +86,7 @@ func main() {
 		gamehighlighterStruct.Subscribe(dg)
 	}
 
-	smileystatsStruct, err := smileystats.NewSmileyStats(*MongoDbHost, *MongoDbPort)
+	smileystatsStruct, err := smileystats.NewSmileyStats(*MySQLDbHost, *MySQLDbPort, *MySQLDbUser, *MySQLDbPass)
 
 	if err != nil {
 		log.Println(err)
