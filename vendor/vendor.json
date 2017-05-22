@@ -3,10 +3,10 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "EhSFMRWyGLcXejtu60dRnaAJyW8=",
+			"checksumSHA1": "uVcHb7RqKZgx8H6Lzan3Y5YfqFg=",
 			"path": "github.com/bwmarrin/discordgo",
-			"revision": "837a3dc5294a9af91660a3d5a2b1749a5d2ee39d",
-			"revisionTime": "2017-03-28T13:55:53Z"
+			"revision": "0993a94b4e1c3291bed2047f583f34792269355c",
+			"revisionTime": "2017-05-15T15:02:49Z"
 		},
 		{
 			"checksumSHA1": "a1RCM0uBen7oXxSa2Z93sugQxtM=",

@@ -11,7 +11,6 @@ import (
 	"github.com/paulvasilenko/discordbot/discordbot/homog"
 	"github.com/paulvasilenko/discordbot/discordbot/quoter"
 	"github.com/paulvasilenko/discordbot/discordbot/smileystats"
-	"github.com/paulvasilenko/discordbot/discordbot/wiki"
 	"log"
 	"log/syslog"
 	"os"
@@ -34,8 +33,55 @@ var (
 	MySQLDbPass = flag.String("mysqlDbPass", "", "Mysql Db Port")
 )
 
-type Subscriber interface {
+type Command interface {
 	Subscribe(s *discordgo.Session)
+	GetInfo() map[string]string
+}
+
+type Helper struct {
+	CommandDocs map[string]string
+}
+
+func (h *Helper) AddDocs(s Command) {
+	for k, v := range s.GetInfo() {
+		h.CommandDocs[k] = v
+	}
+}
+
+func (h *Helper) Subscribe(s *discordgo.Session) {
+	s.AddHandler(h.MessageCreate)
+}
+
+func (h *Helper) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m.Author.Bot {
+		return
+	}
+
+	if !strings.HasPrefix(m.Content, "!pandahelp") {
+		return
+	}
+
+	args := strings.Split(m.Content, " ")
+
+	if len(args) > 1 {
+		info, ok := h.CommandDocs[args[1]]
+
+		if !ok {
+			return
+		}
+
+		s.ChannelMessageSend(m.ChannelID, info)
+
+		return
+	}
+
+	message := ""
+
+	for key, info := range h.CommandDocs {
+		message += key + ": " + info + "\n\n"
+	}
+
+	s.ChannelMessageSend(m.ChannelID, message)
 }
 
 func main() {
@@ -68,9 +114,8 @@ func main() {
 	dg.AddHandler(ready)
 	dg.AddHandler(messageCreate)
 
-	plugins := []Subscriber{
+	plugins := []Command{
 		confify.NewConfify(*basePath, *baseUrl, *faces),
-		wiki.NewWiki(),
 		quoter.NewQuoter(),
 		homog.NewHomog()}
 
@@ -86,6 +131,8 @@ func main() {
 		gamehighlighterStruct.Subscribe(dg)
 	}
 
+	plugins = append(plugins, gamehighlighterStruct)
+
 	smileystatsStruct, err := smileystats.NewSmileyStats(*MySQLDbHost, *MySQLDbPort, *MySQLDbUser, *MySQLDbPass)
 
 	if err != nil {
@@ -93,6 +140,16 @@ func main() {
 	} else {
 		smileystatsStruct.Subscribe(dg)
 	}
+
+	plugins = append(plugins, smileystatsStruct)
+
+	helper := &Helper{CommandDocs: map[string]string{}}
+
+	for _, plugin := range plugins {
+		helper.AddDocs(plugin)
+	}
+
+	helper.Subscribe(dg)
 
 	err = dg.Open()
 

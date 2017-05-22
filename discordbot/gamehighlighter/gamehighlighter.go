@@ -105,7 +105,18 @@ func (ghl *GameHighlighter) Subscribe(s *discordgo.Session) {
 	s.AddHandler(ghl.MessageCreate)
 }
 
+// GetInfo returns string documentation regarded to plugin
+func (ghl *GameHighlighter) GetInfo() map[string]string {
+	return map[string]string{
+		"Highlighter": "Please, see docs here: https://github.com/paulvasilenko/discordbot#highlighter",
+	}
+}
+
 func (ghl *GameHighlighter) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m.Author.Bot {
+		return
+	}
+
 	params, err := ghl.parseMessage(m)
 
 	if err != nil {

@@ -41,7 +41,18 @@ func (c *Confify) Subscribe(s *discordgo.Session) {
 	s.AddHandler(c.MessageCreate)
 }
 
+// GetInfo returns map of info message
+func (c *Confify) GetInfo() map[string]string {
+	return map[string]string{
+		"!confify": `!confify [imageurl] - Replaces faces on image to faces from folder, uses Google Vision API.`,
+	}
+}
+
 func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m.Author.Bot {
+		return
+	}
+
 	if strings.HasPrefix(m.Content, "!confify") {
 		log.Println("Starting confify image")
 		defer log.Println("Finishing confify image")

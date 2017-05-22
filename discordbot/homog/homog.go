@@ -20,8 +20,19 @@ func (h *Homog) Subscribe(s *discordgo.Session) {
 	s.AddHandler(h.MessageCreate)
 }
 
+func (h *Homog) GetInfo() map[string]string {
+	return map[string]string{
+		"!homog":  "Homogenezate message, using % symbol to split message into two parts. Used for plural messages",
+		"!homog2": "Same as !homog, but for singular values",
+	}
+}
+
 // MessageCreate is a event method for message sent to discord
 func (h *Homog) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m.Author.Bot {
+		return
+	}
+
 	data := [2]string{"Гомогенезация", "женщины"}
 
 	pattern := "%s? Нет, спасибо, мне нравятся %s"

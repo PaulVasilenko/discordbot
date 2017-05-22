@@ -17,6 +17,13 @@ func (q *Quoter) Subscribe(s *discordgo.Session) {
 	s.AddHandler(q.MessageReactionAdd)
 }
 
+// GetInfo returns info for command
+func (q *Quoter) GetInfo() map[string]string {
+	return map[string]string{
+		"quoter": "Use `:copyright:` reaction on first message of message block to quote it using bot",
+	}
+}
+
 func (q *Quoter) MessageReactionAdd(s *discordgo.Session, mr *discordgo.MessageReactionAdd) {
 	if mr.Emoji.Name != "©" {
 		return
@@ -31,7 +38,7 @@ func (q *Quoter) MessageReactionAdd(s *discordgo.Session, mr *discordgo.MessageR
 
 	messageID := fmt.Sprintf("%v", convertedID-1)
 
-	messages, err := s.ChannelMessages(mr.ChannelID, 100, "", messageID)
+	messages, err := s.ChannelMessages(mr.ChannelID, 100, "", messageID, "")
 
 	if err != nil {
 		log.Println("Error getting message: ", err)

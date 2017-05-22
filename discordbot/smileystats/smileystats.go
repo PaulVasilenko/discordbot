@@ -44,17 +44,23 @@ func (sm *SmileyStats) Subscribe(dg *discordgo.Session) {
 	dg.AddHandler(sm.MessageCreate)
 }
 
+func (sm *SmileyStats) GetInfo() map[string]string {
+	return map[string]string{
+		"!pts": "Prints top 10 of amojis used. Pass emoji as an argument to see personal stat for this emoji",
+	}
+}
+
 // MessageCreate is method which triggers when message sent to discord chat
 func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m.Author.Bot {
+		return
+	}
+
 	if m.Content == "!printtopsmileys" || m.Content == "!pts" {
 		if err := sm.printTopStats(s, m.ChannelID); err != nil {
 			log.Println("printTopStats error: ", err)
 		}
 
-		return
-	}
-
-	if m.Author.Bot {
 		return
 	}
 
@@ -70,6 +76,8 @@ func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageC
 
 	if strings.HasPrefix(m.Content, "!pts") {
 		sm.printSmileyStat(s, smileys[0], m.ChannelID)
+
+		return
 	}
 
 	if smileys == nil {
