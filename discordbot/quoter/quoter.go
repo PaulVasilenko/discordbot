@@ -57,12 +57,17 @@ func (q *Quoter) MessageReactionAdd(s *discordgo.Session, mr *discordgo.MessageR
 	lastIndex := len(messages) - 1
 
 	for i := lastIndex; i >= 0; i-- {
-		if messages[i].Author.ID !=
-			messages[lastIndex].Author.ID {
+		if messages[i].Author.ID != messages[lastIndex].Author.ID {
 			break
 		}
 
 		content += messages[i].Content + "\n"
+
+		for _, at := range messages[i].Attachments {
+			if at != nil {
+				content += at.URL + "\n"
+			}
+		}
 	}
 
 	embed := &discordgo.MessageEmbed{
