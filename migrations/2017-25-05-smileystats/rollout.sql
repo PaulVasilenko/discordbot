@@ -1,0 +1,1 @@
+ALTER TABLE smileyHistory MODIFY COLUMN emojiName VARCHAR(20) COLLATE latin1_general_cs;

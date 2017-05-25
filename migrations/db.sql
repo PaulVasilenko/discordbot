@@ -11,7 +11,7 @@
 
 CREATE TABLE IF NOT EXISTS `smileyHistory` (
   `emojiId` VARCHAR(20),
-  `emojiName` VARCHAR(20) COLLATE utf8_general_cs,
+  `emojiName` VARCHAR(20) COLLATE latin1_general_cs,
   `userId` VARCHAR(20),
   `userName` VARCHAR(20),
   `createDatetime` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
