@@ -202,7 +202,7 @@ func (r *Racing) join(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 func (r *Racing) leave(s *discordgo.Session, m *discordgo.MessageCreate) {
 	r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Remove(&Racer{ID: m.Author.ID, Username: m.Author.Username})
-	s.ChannelMessageSend(m.ChannelID, m.Author.Username+" successfully left next race")
+	s.ChannelMessageSend(m.ChannelID, m.Author.Username+" successfully left")
 }
 
 func (r *Racing) reset(s *discordgo.Session, m *discordgo.MessageCreate) {
