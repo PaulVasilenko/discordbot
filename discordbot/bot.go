@@ -10,6 +10,7 @@ import (
 	"github.com/paulvasilenko/discordbot/discordbot/gamehighlighter"
 	"github.com/paulvasilenko/discordbot/discordbot/homog"
 	"github.com/paulvasilenko/discordbot/discordbot/quoter"
+	"github.com/paulvasilenko/discordbot/discordbot/racing"
 	"github.com/paulvasilenko/discordbot/discordbot/smileystats"
 	"log"
 	"log/syslog"
@@ -132,6 +133,16 @@ func main() {
 	}
 
 	plugins = append(plugins, gamehighlighterStruct)
+
+	racingStruct, err := racing.NewRacing(*MongoDbHost, *MongoDbPort)
+
+	if err != nil {
+		log.Println(err)
+	} else {
+		racingStruct.Subscribe(dg)
+	}
+
+	plugins = append(plugins, racingStruct)
 
 	smileystatsStruct, err := smileystats.NewSmileyStats(*MySQLDbHost, *MySQLDbPort, *MySQLDbUser, *MySQLDbPass)
 

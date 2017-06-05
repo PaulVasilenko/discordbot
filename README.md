@@ -59,3 +59,15 @@ you should *react* to first message in block using copyright emoji (`:copyright:
 
 Then bot reads 100 messages after this and prints only block of messages, which are belonged to only one user
 Algorithm stops when appears message which is not belonged to user.
+
+### Racing
+
+Provides functionality to compete in a speed of wheelchair.
+
+#### Commands
+
+ - `!rjoin` - Joins to races
+ - `!rleave` - Leaves from races
+ - `!rstart` - Starts race
+ - `!rjoined` - Prints list of joined people
+ - `!rreset` - Removes all people from joined list
