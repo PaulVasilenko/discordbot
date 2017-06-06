@@ -24,14 +24,21 @@ const (
 	RacerEmoji      = ":wheelchair:"
 	RacerCloudEmoji = ":cloud:"
 
-	RaceDelimiter    = "   "
-	RaceTrackLength  = 25
-	SpeedCoefficient = 70
+	RaceDelimiter   = "   "
+	RaceTrackLength = 25
+
+	SpeedCoefficient       = 70
+	BeingSlowedCoefficient = 10
 )
 
 type Racer struct {
 	ID       string `bson:"id"`
 	Username string `bson:"username"`
+}
+
+type RacerStats struct {
+	Racer      *Racer
+	FinishTime int
 }
 
 type Racing struct {
@@ -93,7 +100,7 @@ func (r *Racing) start(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var racers []*Racer
 	r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Find(bson.M{}).All(&racers)
 
-	var winners []*Racer
+	var winners []*RacerStats
 	ra := rand.New(rand.NewSource(time.Now().UnixNano()))
 	coef := make([]int, len(racers))
 
@@ -132,10 +139,15 @@ func (r *Racing) start(s *discordgo.Session, m *discordgo.MessageCreate) {
 				continue
 			}
 
+			if ra.Intn(101) < BeingSlowedCoefficient {
+				shouldStop = false
+				continue
+			}
+
 			coef[i] += 1
 
 			if coef[i] == RaceTrackLength {
-				winners = append(winners, racer)
+				winners = append(winners, &RacerStats{Racer: racer, FinishTime: timer})
 				continue
 			}
 
@@ -144,7 +156,8 @@ func (r *Racing) start(s *discordgo.Session, m *discordgo.MessageCreate) {
 			}
 
 			if coef[i] == RaceTrackLength {
-				winners = append(winners, racer)
+				winners = append(winners, &RacerStats{Racer: racer, FinishTime: timer})
+				continue
 			}
 
 			if coef[i] < RaceTrackLength {
@@ -157,7 +170,7 @@ func (r *Racing) start(s *discordgo.Session, m *discordgo.MessageCreate) {
 			m.ChannelID,
 			raceMessage.ID,
 			fmt.Sprintf(
-				"%s %s  |Finish; Time: %02d:%02d\n%s",
+				"%s %s |Finish; Time: %02d:%02d\n%s",
 				"GO!",
 				strings.Repeat(RaceDelimiter, RaceTrackLength-1),
 				timer/60,
@@ -177,8 +190,8 @@ func (r *Racing) start(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	message := "Race result:\n"
 
-	for place, racer := range winners {
-		message += fmt.Sprintf("#%d - %s\n", place+1, racer.Username)
+	for place, w := range winners {
+		message += fmt.Sprintf("**#%d - %s;** Finish Time: %d s; Speed: %f m/s;\n", place+1, w.Racer.Username, w.FinishTime, float64(RaceTrackLength)/float64(w.FinishTime))
 	}
 
 	s.ChannelMessageSend(m.ChannelID, message)
@@ -202,7 +215,7 @@ func (r *Racing) join(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 func (r *Racing) leave(s *discordgo.Session, m *discordgo.MessageCreate) {
 	r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Remove(&Racer{ID: m.Author.ID, Username: m.Author.Username})
-	s.ChannelMessageSend(m.ChannelID, m.Author.Username+" successfully left")
+	s.ChannelMessageSend(m.ChannelID, m.Author.Username+" successfully left next race")
 }
 
 func (r *Racing) reset(s *discordgo.Session, m *discordgo.MessageCreate) {
