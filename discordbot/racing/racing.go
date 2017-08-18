@@ -3,12 +3,17 @@ package racing
 import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"github.com/patrickmn/go-cache"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"log"
 	"math/rand"
 	"strings"
 	"time"
+	//"regexp"
+	"context"
+	"database/sql"
+	"regexp"
 )
 
 const (
@@ -24,16 +29,23 @@ const (
 	RacerEmoji      = ":wheelchair:"
 	RacerCloudEmoji = ":cloud:"
 
+	DatabasePandaBot = "pandabot"
+	DatetimeLayout   = "2006-01-02 15:04:05"
+
 	RaceDelimiter   = "   "
 	RaceTrackLength = 25
 
+	MaximumDiscordMessageLength = 2000
+
 	SpeedCoefficient       = 70
 	BeingSlowedCoefficient = 10
+	SmileyRegex            = `(?i)(\:[\w\d\_]+\:(\:([\w\d]+\-)+[\w\d]+\:)?)`
 )
 
 type Racer struct {
 	ID       string `bson:"id"`
 	Username string `bson:"username"`
+	Emoticon string `bson:"emoticon"`
 }
 
 type RacerStats struct {
@@ -42,10 +54,12 @@ type RacerStats struct {
 }
 
 type Racing struct {
+	mysqlDbConn *sql.DB
 	mongoDbConn *mgo.Session
+	cache       *cache.Cache
 }
 
-func NewRacing(MongoDbHost, MongoDbPort string) (*Racing, error) {
+func NewRacing(MongoDbHost, MongoDbPort, MysqlDbHost, MysqlDbPort, MysqlDbUser, MysqlDbPassword string) (*Racing, error) {
 	session, err := mgo.Dial("mongodb://" + MongoDbHost + ":" + MongoDbPort)
 
 	if err != nil {
@@ -63,7 +77,16 @@ func NewRacing(MongoDbHost, MongoDbPort string) (*Racing, error) {
 		return nil, err
 	}
 
-	return &Racing{mongoDbConn: session}, nil
+	c := cache.New(cache.NoExpiration, cache.NoExpiration)
+
+	dsn := MysqlDbUser + ":" + MysqlDbPassword + "@tcp(" + MysqlDbHost + ":" + MysqlDbPort + ")/" + DatabasePandaBot
+	db, err := sql.Open("mysql", dsn)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &Racing{mongoDbConn: session, cache: c, mysqlDbConn: db}, nil
 }
 
 func (r *Racing) Subscribe(s *discordgo.Session) {
@@ -86,7 +109,7 @@ func (r *Racing) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate)
 		r.reset(s, m)
 	case m.Content == CommandStartRace:
 		r.start(s, m)
-	case m.Content == CommandJoinRace:
+	case strings.HasPrefix(m.Content, CommandJoinRace):
 		r.join(s, m)
 	case m.Content == CommandLeaveRace:
 		r.leave(s, m)
@@ -96,7 +119,16 @@ func (r *Racing) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate)
 }
 
 // TODO: Upgrade this method to prevent network delays affecting race
+// TODO: Refactor
 func (r *Racing) start(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if _, ok := r.cache.Get("Racing"); ok {
+		s.ChannelMessageSend(m.ChannelID, "Race is already started somewhere. Please, wait until it ends")
+		return
+	}
+
+	r.cache.Set("Racing", true, cache.NoExpiration)
+	defer r.cache.Delete("Racing")
+
 	var racers []*Racer
 	r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Find(bson.M{}).All(&racers)
 
@@ -190,15 +222,84 @@ func (r *Racing) start(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	message := "Race result:\n"
 
-	for place, w := range winners {
-		message += fmt.Sprintf("**#%d - %s;** Finish Time: %d s; Speed: %f m/s;\n", place+1, w.Racer.Username, w.FinishTime, float64(RaceTrackLength)/float64(w.FinishTime))
+	place := 0
+	previousTime := 0
+
+	for _, w := range winners {
+		if previousTime != w.FinishTime {
+			place += 1
+		}
+		previousTime = w.FinishTime
+		message += fmt.Sprintf("**#%d - %s;** Finish Time: %d s; Speed: %f m/s;\n", place, w.Racer.Username, w.FinishTime, float64(RaceTrackLength)/float64(w.FinishTime))
 	}
+
+	go r.saveRacerStats(winners)
 
 	s.ChannelMessageSend(m.ChannelID, message)
 }
 
 func (r *Racing) join(s *discordgo.Session, m *discordgo.MessageCreate) {
-	err := r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Insert(&Racer{ID: m.Author.ID, Username: m.Author.Username})
+	count, err := r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Find(bson.M{}).Count()
+
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	// Assuming we're saving this user
+	count += 1
+
+	// Calculate maximum number of symbols might be used to represent race
+	// 35 is maximum username length + several symbols
+	// 22 is number of not calculated symbols used
+	symbolsThreshold := count*(RaceTrackLength*len(RaceDelimiter)+35) + len(RaceDelimiter)*RaceTrackLength + 22
+
+	if symbolsThreshold >= MaximumDiscordMessageLength {
+		s.ChannelMessageSend(m.ChannelID, "You cannot join race: maximum number of racers are already joined")
+		return
+	}
+
+	racer := &Racer{ID: m.Author.ID, Username: m.Author.Username, Emoticon: RacerEmoji}
+
+	emojiRegex := regexp.MustCompile(SmileyRegex)
+
+	smiley := emojiRegex.FindString(m.Content)
+	fmt.Println(m.Content)
+
+	if smiley != "" {
+		channel, err := s.Channel(m.ChannelID)
+
+		if err != nil {
+			log.Println("Unable to get channel info: ", err)
+
+			return
+		}
+
+		guild, err := s.Guild(channel.GuildID)
+
+		if err != nil {
+			log.Println("Unable to get guild info: ", err)
+
+			return
+		}
+
+		racer.Emoticon = smiley
+
+		fmt.Println(smiley)
+		fmt.Println(racer.Emoticon)
+
+		for _, emoji := range guild.Emojis {
+			if smiley == (":" + emoji.Name + ":") {
+				racer.Emoticon = "<" + smiley + emoji.ID + ">"
+
+				break
+			}
+		}
+
+		fmt.Println(racer.Emoticon)
+	}
+
+	err = r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Insert(racer)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") {
@@ -214,7 +315,7 @@ func (r *Racing) join(s *discordgo.Session, m *discordgo.MessageCreate) {
 }
 
 func (r *Racing) leave(s *discordgo.Session, m *discordgo.MessageCreate) {
-	r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Remove(&Racer{ID: m.Author.ID, Username: m.Author.Username})
+	r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Remove(bson.M{"id": m.Author.ID})
 	s.ChannelMessageSend(m.ChannelID, m.Author.Username+" successfully left next race")
 }
 
@@ -236,12 +337,68 @@ func (r *Racing) joined(s *discordgo.Session, m *discordgo.MessageCreate) {
 	s.ChannelMessageSend(m.ChannelID, "Racers:\n"+message)
 }
 
+func (r *Racing) saveRacerStats(winners []*RacerStats) {
+	tx, err := r.mysqlDbConn.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelDefault, ReadOnly: false})
+
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	if _, err := tx.Query(`INSERT INTO raceHistory (raceDatetime) VALUES (?);`, time.Now().Format(DatetimeLayout)); err != nil {
+		log.Println(err)
+		return
+	}
+
+	var raceId int
+
+	if err := tx.QueryRow("SELECT LAST_INSERT_ID();").Scan(&raceId); err != nil {
+		log.Println(err)
+		tx.Rollback()
+		return
+	}
+
+	query := `
+		INSERT INTO raceHistoryStats
+			(raceId, racerId, racerUsername, racerSpeed, racerTime, place)
+		VALUES`
+
+	values := make([]string, len(winners))
+
+	for i, racer := range winners {
+		values[i] = fmt.Sprintf(
+			"(%d, '%s', '%s', %f, %d, %d)",
+			raceId,
+			racer.Racer.ID,
+			racer.Racer.Username,
+			float64(RaceTrackLength)/float64(racer.FinishTime),
+			racer.FinishTime,
+			i,
+		)
+	}
+
+	query += strings.Join(values, ",")
+
+	if _, err := tx.Query(query + ";"); err != nil {
+		log.Println(err)
+		tx.Rollback()
+		return
+	}
+
+	tx.Commit()
+}
+
 func racerPlaces(racers []*Racer, coef []int) string {
 	message := ""
 
 	for k, v := range racers {
 		place := strings.Repeat(RaceDelimiter, coef[k])
-		message += fmt.Sprintf("%s%s-%s\n", place, RacerEmoji, v.Username)
+		racerEmoji := RacerEmoji
+		if v.Emoticon != "" {
+			racerEmoji = v.Emoticon
+		}
+
+		message += fmt.Sprintf("%s%s-%s\n", place, racerEmoji, v.Username)
 	}
 
 	return message

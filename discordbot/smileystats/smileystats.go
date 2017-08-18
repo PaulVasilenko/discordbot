@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	DatabaseSmileyStats string = "smileystats"
+	DatabaseSmileyStats string = "pandabot"
 	SmileyRegex         string = `(?i)(\:[\w\d\_]+\:(\:([\w\d]+\-)+[\w\d]+\:)?)`
 )
 
@@ -29,6 +29,7 @@ type SmileyStats struct {
 func NewSmileyStats(MysqlDbHost, MysqlDbPort, MysqlDbUser, MysqlDbPassword string) (*SmileyStats, error) {
 	dsn := MysqlDbUser + ":" + MysqlDbPassword + "@tcp(" + MysqlDbHost + ":" + MysqlDbPort + ")/" + DatabaseSmileyStats
 	db, err := sql.Open("mysql", dsn)
+	db.SetMaxOpenConns(1)
 
 	if err != nil {
 		return nil, err

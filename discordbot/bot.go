@@ -97,7 +97,6 @@ func main() {
 	flag.Parse()
 	flagconfig.Parse()
 
-	runtime.GOMAXPROCS(4)
 	log.Printf("GOMAXPROCS is %d\n", runtime.GOMAXPROCS(0))
 
 	if *token == "" {
@@ -134,7 +133,9 @@ func main() {
 
 	plugins = append(plugins, gamehighlighterStruct)
 
-	racingStruct, err := racing.NewRacing(*MongoDbHost, *MongoDbPort)
+	racingStruct, err := racing.NewRacing(
+		*MongoDbHost, *MongoDbPort, *MySQLDbHost, *MySQLDbPort, *MySQLDbUser, *MySQLDbPass,
+	)
 
 	if err != nil {
 		log.Println(err)
@@ -188,6 +189,12 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if strings.HasPrefix(m.Content, "!pandabot") {
 		_, _ = s.ChannelMessageSend(m.ChannelID, "PandaBot")
 		return
+	}
+}
+
+func threeHundred(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if strings.Contains(m.Content, "300") || strings.Contains(m.Content, "триста") {
+		s.ChannelMessageSend(m.ChannelID, "Отсоси у легалиста")
 	}
 }
 
