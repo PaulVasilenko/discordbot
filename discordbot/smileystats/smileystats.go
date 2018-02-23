@@ -31,6 +31,7 @@ func NewSmileyStats(MysqlDbHost, MysqlDbPort, MysqlDbUser, MysqlDbPassword strin
 	db, err := sql.Open("mysql", dsn)
 	db.SetMaxIdleConns(1)
 	db.SetMaxOpenConns(50)
+	db.SetConnMaxLifetime(1 * time.Second)
 
 	if err != nil {
 		return nil, err
@@ -158,7 +159,7 @@ func (sm *SmileyStats) insertSmiley(emojiID, emojiName, authorID, authorName str
 		VALUES
 			(?, ?, ?, ?, ?);`
 
-	_, err := sm.dbConn.Query(
+	r, err := sm.dbConn.Query(
 		sqlString,
 		emojiID,
 		emojiName,
@@ -167,7 +168,13 @@ func (sm *SmileyStats) insertSmiley(emojiID, emojiName, authorID, authorName str
 		time.Now().Format("2006-01-02 15:04:05"),
 	)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	defer r.Close()
+
+	return nil
 }
 
 func (sm *SmileyStats) printTopStats(s *discordgo.Session, channelID string) error {
@@ -181,6 +188,8 @@ func (sm *SmileyStats) printTopStats(s *discordgo.Session, channelID string) err
 	if err != nil {
 		return err
 	}
+
+	defer rows.Close()
 
 	stats := "Smileys top:\n"
 
@@ -219,6 +228,8 @@ func (sm *SmileyStats) printSmileyStat(s *discordgo.Session, smiley, channelID s
 	if err != nil {
 		return err
 	}
+
+	defer rows.Close()
 
 	stats := ""
 

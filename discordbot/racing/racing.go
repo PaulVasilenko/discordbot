@@ -345,9 +345,12 @@ func (r *Racing) saveRacerStats(winners []*RacerStats) {
 		return
 	}
 
-	if _, err := tx.Query(`INSERT INTO raceHistory (raceDatetime) VALUES (?);`, time.Now().Format(DatetimeLayout)); err != nil {
+	if r, err := tx.Query(`INSERT INTO raceHistory (raceDatetime) VALUES (?);`, time.Now().Format(DatetimeLayout)); err != nil {
+		r.Close()
 		log.Println(err)
 		return
+	} else {
+		r.Close()
 	}
 
 	var raceId int
@@ -379,10 +382,13 @@ func (r *Racing) saveRacerStats(winners []*RacerStats) {
 
 	query += strings.Join(values, ",")
 
-	if _, err := tx.Query(query + ";"); err != nil {
+	if r, err := tx.Query(query + ";"); err != nil {
+		r.Close()
 		log.Println(err)
 		tx.Rollback()
 		return
+	} else {
+		r.Close()
 	}
 
 	tx.Commit()
