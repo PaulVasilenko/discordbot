@@ -23,6 +23,7 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strconv"
 	"strings"
@@ -64,9 +65,11 @@ func (s *Session) request(method, urlStr, contentType string, b []byte, bucketID
 	if bucketID == "" {
 		bucketID = strings.SplitN(urlStr, "?", 2)[0]
 	}
+	return s.RequestWithLockedBucket(method, urlStr, contentType, b, s.Ratelimiter.LockBucket(bucketID), sequence)
+}
 
-	bucket := s.ratelimiter.LockBucket(bucketID)
-
+// RequestWithLockedBucket makes a request using a bucket that's already been locked
+func (s *Session) RequestWithLockedBucket(method, urlStr, contentType string, b []byte, bucket *Bucket, sequence int) (response []byte, err error) {
 	if s.Debug {
 		log.Printf("API REQUEST %8s :: %s\n", method, urlStr)
 		log.Printf("API REQUEST  PAYLOAD :: [%s]\n", string(b))
@@ -138,7 +141,7 @@ func (s *Session) request(method, urlStr, contentType string, b []byte, bucketID
 		if sequence < s.MaxRestRetries {
 
 			s.log(LogInformational, "%s Failed (%s), Retrying...", urlStr, resp.Status)
-			response, err = s.request(method, urlStr, contentType, b, bucketID, sequence+1)
+			response, err = s.RequestWithLockedBucket(method, urlStr, contentType, b, s.Ratelimiter.LockBucketObject(bucket), sequence+1)
 		} else {
 			err = fmt.Errorf("Exceeded Max retries HTTP %s, %s", resp.Status, response)
 		}
@@ -157,7 +160,7 @@ func (s *Session) request(method, urlStr, contentType string, b []byte, bucketID
 		// we can make the above smarter
 		// this method can cause longer delays than required
 
-		response, err = s.request(method, urlStr, contentType, b, bucketID, sequence)
+		response, err = s.RequestWithLockedBucket(method, urlStr, contentType, b, s.Ratelimiter.LockBucketObject(bucket), sequence)
 
 	default: // Error condition
 		err = newRestError(req, resp, response)
@@ -309,8 +312,8 @@ func (s *Session) UserUpdate(email, password, username, avatar, newPassword stri
 	// If left blank, avatar will be set to null/blank
 
 	data := struct {
-		Email       string `json:"email"`
-		Password    string `json:"password"`
+		Email       string `json:"email,omitempty"`
+		Password    string `json:"password,omitempty"`
 		Username    string `json:"username,omitempty"`
 		Avatar      string `json:"avatar,omitempty"`
 		NewPassword string `json:"new_password,omitempty"`
@@ -584,7 +587,7 @@ func (s *Session) GuildCreate(name string) (st *Guild, err error) {
 		Name string `json:"name"`
 	}{name}
 
-	body, err := s.RequestWithBucketID("POST", EndpointGuilds, data, EndpointGuilds)
+	body, err := s.RequestWithBucketID("POST", EndpointGuildCreate, data, EndpointGuildCreate)
 	if err != nil {
 		return
 	}
@@ -763,7 +766,21 @@ func (s *Session) GuildMember(guildID, userID string) (st *Member, err error) {
 // userID    : The ID of a User
 func (s *Session) GuildMemberDelete(guildID, userID string) (err error) {
 
-	_, err = s.RequestWithBucketID("DELETE", EndpointGuildMember(guildID, userID), nil, EndpointGuildMember(guildID, ""))
+	return s.GuildMemberDeleteWithReason(guildID, userID, "")
+}
+
+// GuildMemberDeleteWithReason removes the given user from the given guild.
+// guildID   : The ID of a Guild.
+// userID    : The ID of a User
+// reason    : The reason for the kick
+func (s *Session) GuildMemberDeleteWithReason(guildID, userID, reason string) (err error) {
+
+	uri := EndpointGuildMember(guildID, userID)
+	if reason != "" {
+		uri += "?reason=" + url.QueryEscape(reason)
+	}
+
+	_, err = s.RequestWithBucketID("DELETE", uri, nil, EndpointGuildMember(guildID, ""))
 	return
 }
 
@@ -892,7 +909,7 @@ func (s *Session) GuildChannelsReorder(guildID string, channels []*Channel) (err
 // GuildInvites returns an array of Invite structures for the given guild
 // guildID   : The ID of a Guild.
 func (s *Session) GuildInvites(guildID string) (st []*Invite, err error) {
-	body, err := s.RequestWithBucketID("GET", EndpointGuildInvites(guildID), nil, EndpointGuildInivtes(guildID))
+	body, err := s.RequestWithBucketID("GET", EndpointGuildInvites(guildID), nil, EndpointGuildInvites(guildID))
 	if err != nil {
 		return
 	}
@@ -942,6 +959,7 @@ func (s *Session) GuildRoleEdit(guildID, roleID, name string, color int, hoist b
 	// Prevent sending a color int that is too big.
 	if color > 0xFFFFFF {
 		err = fmt.Errorf("color value cannot be larger than 0xFFFFFF")
+		return nil, err
 	}
 
 	data := struct {
@@ -1005,6 +1023,9 @@ func (s *Session) GuildPruneCount(guildID string, days uint32) (count uint32, er
 
 	uri := EndpointGuildPrune(guildID) + fmt.Sprintf("?days=%d", days)
 	body, err := s.RequestWithBucketID("GET", uri, nil, EndpointGuildPrune(guildID))
+	if err != nil {
+		return
+	}
 
 	err = unmarshal(body, &p)
 	if err != nil {
@@ -1189,7 +1210,7 @@ func (s *Session) GuildEmbedEdit(guildID string, enabled bool, channelID string)
 // Functions specific to Discord Channels
 // ------------------------------------------------------------------------------------------------
 
-// Channel returns a Channel strucutre of a specific Channel.
+// Channel returns a Channel structure of a specific Channel.
 // channelID  : The ID of the Channel you want returned.
 func (s *Session) Channel(channelID string) (st *Channel, err error) {
 	body, err := s.RequestWithBucketID("GET", EndpointChannel(channelID), nil, EndpointChannel(channelID))
@@ -1204,12 +1225,16 @@ func (s *Session) Channel(channelID string) (st *Channel, err error) {
 // ChannelEdit edits the given channel
 // channelID  : The ID of a Channel
 // name       : The new name to assign the channel.
-func (s *Session) ChannelEdit(channelID, name string) (st *Channel, err error) {
+func (s *Session) ChannelEdit(channelID, name string) (*Channel, error) {
+	return s.ChannelEditComplex(channelID, &ChannelEdit{
+		Name: name,
+	})
+}
 
-	data := struct {
-		Name string `json:"name"`
-	}{name}
-
+// ChannelEditComplex edits an existing channel, replacing the parameters entirely with ChannelEdit struct
+// channelID  : The ID of a Channel
+// data          : The channel struct to send
+func (s *Session) ChannelEditComplex(channelID string, data *ChannelEdit) (st *Channel, err error) {
 	body, err := s.RequestWithBucketID("PATCH", EndpointChannel(channelID), data, EndpointChannel(channelID))
 	if err != nil {
 		return
@@ -1316,6 +1341,8 @@ func (s *Session) ChannelMessageSend(channelID string, content string) (*Message
 	})
 }
 
+var quoteEscaper = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
 // ChannelMessageSendComplex sends a message to the given channel.
 // channelID : The ID of a Channel.
 // data      : The message struct to send.
@@ -1326,46 +1353,60 @@ func (s *Session) ChannelMessageSendComplex(channelID string, data *MessageSend)
 
 	endpoint := EndpointChannelMessages(channelID)
 
-	var response []byte
+	// TODO: Remove this when compatibility is not required.
+	files := data.Files
 	if data.File != nil {
+		if files == nil {
+			files = []*File{data.File}
+		} else {
+			err = fmt.Errorf("cannot specify both File and Files")
+			return
+		}
+	}
+
+	var response []byte
+	if len(files) > 0 {
 		body := &bytes.Buffer{}
 		bodywriter := multipart.NewWriter(body)
 
-		// What's a better way of doing this? Reflect? Generator? I'm open to suggestions
-
-		if data.Content != "" {
-			if err = bodywriter.WriteField("content", data.Content); err != nil {
-				return
-			}
-		}
-
-		if data.Embed != nil {
-			var embed []byte
-			embed, err = json.Marshal(data.Embed)
-			if err != nil {
-				return
-			}
-			err = bodywriter.WriteField("embed", string(embed))
-			if err != nil {
-				return
-			}
-		}
-
-		if data.Tts {
-			if err = bodywriter.WriteField("tts", "true"); err != nil {
-				return
-			}
-		}
-
-		var writer io.Writer
-		writer, err = bodywriter.CreateFormFile("file", data.File.Name)
+		var payload []byte
+		payload, err = json.Marshal(data)
 		if err != nil {
 			return
 		}
 
-		_, err = io.Copy(writer, data.File.Reader)
+		var p io.Writer
+
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition", `form-data; name="payload_json"`)
+		h.Set("Content-Type", "application/json")
+
+		p, err = bodywriter.CreatePart(h)
 		if err != nil {
 			return
+		}
+
+		if _, err = p.Write(payload); err != nil {
+			return
+		}
+
+		for i, file := range files {
+			h := make(textproto.MIMEHeader)
+			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file%d"; filename="%s"`, i, quoteEscaper.Replace(file.Name)))
+			contentType := file.ContentType
+			if contentType == "" {
+				contentType = "application/octet-stream"
+			}
+			h.Set("Content-Type", contentType)
+
+			p, err = bodywriter.CreatePart(h)
+			if err != nil {
+				return
+			}
+
+			if _, err = io.Copy(p, file.Reader); err != nil {
+				return
+			}
 		}
 
 		err = bodywriter.Close()
@@ -1445,7 +1486,7 @@ func (s *Session) ChannelMessageDelete(channelID, messageID string) (err error) 
 }
 
 // ChannelMessagesBulkDelete bulk deletes the messages from the channel for the provided messageIDs.
-// If only one messageID is in the slice call channelMessageDelete funciton.
+// If only one messageID is in the slice call channelMessageDelete function.
 // If the slice is empty do nothing.
 // channelID : The ID of the channel for the messages to delete.
 // messages  : The IDs of the messages to be deleted. A slice of string IDs. A maximum of 100 messages.
@@ -1538,16 +1579,14 @@ func (s *Session) ChannelInvites(channelID string) (st []*Invite, err error) {
 
 // ChannelInviteCreate creates a new invite for the given channel.
 // channelID   : The ID of a Channel
-// i           : An Invite struct with the values MaxAge, MaxUses, Temporary,
-//               and XkcdPass defined.
+// i           : An Invite struct with the values MaxAge, MaxUses and Temporary defined.
 func (s *Session) ChannelInviteCreate(channelID string, i Invite) (st *Invite, err error) {
 
 	data := struct {
-		MaxAge    int    `json:"max_age"`
-		MaxUses   int    `json:"max_uses"`
-		Temporary bool   `json:"temporary"`
-		XKCDPass  string `json:"xkcdpass"`
-	}{i.MaxAge, i.MaxUses, i.Temporary, i.XkcdPass}
+		MaxAge    int  `json:"max_age"`
+		MaxUses   int  `json:"max_uses"`
+		Temporary bool `json:"temporary"`
+	}{i.MaxAge, i.MaxUses, i.Temporary}
 
 	body, err := s.RequestWithBucketID("POST", EndpointChannelInvites(channelID), data, EndpointChannelInvites(channelID))
 	if err != nil {
@@ -1587,7 +1626,7 @@ func (s *Session) ChannelPermissionDelete(channelID, targetID string) (err error
 // ------------------------------------------------------------------------------------------------
 
 // Invite returns an Invite structure of the given invite
-// inviteID : The invite code (or maybe xkcdpass?)
+// inviteID : The invite code
 func (s *Session) Invite(inviteID string) (st *Invite, err error) {
 
 	body, err := s.RequestWithBucketID("GET", EndpointInvite(inviteID), nil, EndpointInvite(""))
@@ -1600,7 +1639,7 @@ func (s *Session) Invite(inviteID string) (st *Invite, err error) {
 }
 
 // InviteDelete deletes an existing invite
-// inviteID   : the code (or maybe xkcdpass?) of an invite
+// inviteID   : the code of an invite
 func (s *Session) InviteDelete(inviteID string) (st *Invite, err error) {
 
 	body, err := s.RequestWithBucketID("DELETE", EndpointInvite(inviteID), nil, EndpointInvite(""))
@@ -1613,7 +1652,7 @@ func (s *Session) InviteDelete(inviteID string) (st *Invite, err error) {
 }
 
 // InviteAccept accepts an Invite to a Guild or Channel
-// inviteID : The invite code (or maybe xkcdpass?)
+// inviteID : The invite code
 func (s *Session) InviteAccept(inviteID string) (st *Invite, err error) {
 
 	body, err := s.RequestWithBucketID("POST", EndpointInvite(inviteID), nil, EndpointInvite(""))
@@ -1680,6 +1719,28 @@ func (s *Session) Gateway() (gateway string, err error) {
 	// MacOS will fail to connect if we add query params without a trailing slash on the base domain.
 	if !strings.HasSuffix(gateway, "/") {
 		gateway += "/"
+	}
+
+	return
+}
+
+// GatewayBot returns the websocket Gateway address and the recommended number of shards
+func (s *Session) GatewayBot() (st *GatewayBotResponse, err error) {
+
+	response, err := s.RequestWithBucketID("GET", EndpointGatewayBot, nil, EndpointGatewayBot)
+	if err != nil {
+		return
+	}
+
+	err = unmarshal(response, &st)
+	if err != nil {
+		return
+	}
+
+	// Ensure the gateway always has a trailing slash.
+	// MacOS will fail to connect if we add query params without a trailing slash on the base domain.
+	if !strings.HasSuffix(st.URL, "/") {
+		st.URL += "/"
 	}
 
 	return
@@ -1810,14 +1871,9 @@ func (s *Session) WebhookEditWithToken(webhookID, token, name, avatar string) (s
 
 // WebhookDelete deletes a webhook for a given ID
 // webhookID: The ID of a webhook.
-func (s *Session) WebhookDelete(webhookID string) (st *Webhook, err error) {
+func (s *Session) WebhookDelete(webhookID string) (err error) {
 
-	body, err := s.RequestWithBucketID("DELETE", EndpointWebhook(webhookID), nil, EndpointWebhooks)
-	if err != nil {
-		return
-	}
-
-	err = unmarshal(body, &st)
+	_, err = s.RequestWithBucketID("DELETE", EndpointWebhook(webhookID), nil, EndpointWebhooks)
 
 	return
 }
@@ -1871,6 +1927,16 @@ func (s *Session) MessageReactionAdd(channelID, messageID, emojiID string) error
 func (s *Session) MessageReactionRemove(channelID, messageID, emojiID, userID string) error {
 
 	_, err := s.RequestWithBucketID("DELETE", EndpointMessageReaction(channelID, messageID, emojiID, userID), nil, EndpointMessageReaction(channelID, "", "", ""))
+
+	return err
+}
+
+// MessageReactionsRemoveAll deletes all reactions from a message
+// channelID : The channel ID
+// messageID : The message ID.
+func (s *Session) MessageReactionsRemoveAll(channelID, messageID string) error {
+
+	_, err := s.RequestWithBucketID("DELETE", EndpointMessageReactionsAll(channelID, messageID), nil, EndpointMessageReactionsAll(channelID, messageID))
 
 	return err
 }

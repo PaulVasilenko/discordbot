@@ -29,6 +29,9 @@ type SmileyStats struct {
 func NewSmileyStats(MysqlDbHost, MysqlDbPort, MysqlDbUser, MysqlDbPassword string) (*SmileyStats, error) {
 	dsn := MysqlDbUser + ":" + MysqlDbPassword + "@tcp(" + MysqlDbHost + ":" + MysqlDbPort + ")/" + DatabaseSmileyStats
 	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
 	db.SetMaxIdleConns(1)
 	db.SetMaxOpenConns(50)
 	db.SetConnMaxLifetime(1 * time.Second)

@@ -7,5 +7,5 @@ sudo apt-get install -y mongodb-org
 sudo service mongod start
 
 sudo apt-get -y install mysql-server
-sudo mysql -Bse "SET @@GLOBAL.SQL_MODE='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'"
+sudo mysql -uroot -proot -Bse "SET @@GLOBAL.SQL_MODE='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'"
 

@@ -102,8 +102,9 @@ func main() {
 	if *token == "" {
 		fmt.Println("No token provided")
 	}
+	fmt.Println("Opening connection with token: ", *token)
 
-	dg, err := discordgo.New("Bot " + *token)
+	dg, err := discordgo.New(*token)
 
 	if err != nil {
 		fmt.Println(err)
@@ -182,12 +183,18 @@ func main() {
 }
 
 func ready(s *discordgo.Session, event *discordgo.Ready) {
-	_ = s.UpdateStatus(0, "Dirty Games")
+	err := s.UpdateStatus(0, "Dirty Games")
+	if err != nil {
+		fmt.Println("Error updating status:", err)
+	}
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if strings.HasPrefix(m.Content, "!pandabot") {
-		_, _ = s.ChannelMessageSend(m.ChannelID, "PandaBot")
+		_, err := s.ChannelMessageSend(m.ChannelID, "PandaBot")
+		if err != nil {
+			fmt.Println("ChannelMessageSend error:", err)
+		}
 		return
 	}
 }
