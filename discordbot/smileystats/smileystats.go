@@ -81,6 +81,9 @@ func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageC
 	smileys := regexpSmiley.FindAllString(m.Content, -1)
 
 	if strings.HasPrefix(m.Content, "!pts") {
+		if len(m.Mentions) > 0 {
+			sm.printUserStat(s, m.Mentions[0].ID, m.ChannelID)
+		}
 		sm.printSmileyStat(s, smileys[0], m.ChannelID)
 
 		return
@@ -224,7 +227,7 @@ func (sm *SmileyStats) printSmileyStat(s *discordgo.Session, smiley, channelID s
 	SELECT COUNT(emojiId) as usages, emojiName, emojiId, userName
 	FROM smileyHistory
 	WHERE emojiName = ?
-	GROUP BY userName ORDER BY usages DESC LIMIT 10`
+	GROUP BY userId ORDER BY usages DESC LIMIT 10`
 
 	rows, err := sm.dbConn.Query(sqlString, smiley)
 
@@ -261,4 +264,50 @@ func (sm *SmileyStats) printSmileyStat(s *discordgo.Session, smiley, channelID s
 	s.ChannelMessageSend(channelID, stats)
 
 	return nil
+}
+
+func (sm *SmileyStats) printUserStat(s *discordgo.Session, userID, channelID string) error {
+        sqlString := `
+	SELECT COUNT(emojiId) as usages, emojiName, emojiId, userName
+	FROM smileyHistory
+	WHERE userId = ?
+	GROUP BY emojiName
+	ORDER BY usages
+	DESC LIMIT 10;`
+
+        rows, err := sm.dbConn.Query(sqlString, userID)
+
+        if err != nil {
+                return err
+        }
+
+        defer rows.Close()
+
+        stats := ""
+
+        i := 0
+        for rows.Next() {
+                i += 1
+
+                var count, emoticonName, emoticonId, userName string
+                rows.Scan(&count, &emoticonName, &emoticonId, &userName)
+
+                if i == 1 {
+                        stats += fmt.Sprintf("User <@%s> top:\n", userID)
+                }
+
+		smileyString := ""
+
+                if emoticonId != "" {
+                        smileyString = fmt.Sprintf("<%s%v>", emoticonName, emoticonId)
+                } else {
+			smileyString = emoticonName
+                }
+
+                stats += fmt.Sprintf("#%d - %s %s usages\n", i, smileyString, count)
+        }
+
+        s.ChannelMessageSend(channelID, stats)
+
+        return nil
 }
