@@ -2,12 +2,10 @@
 package smileystats
 
 import (
-	"crypto/md5"
 	"database/sql"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/patrickmn/go-cache"
 	"log"
 	"regexp"
 	"strings"
@@ -16,13 +14,12 @@ import (
 
 const (
 	DatabaseSmileyStats string = "pandabot"
-	SmileyRegex         string = `(?i)(\:[\w\d\_]+\:(\:([\w\d]+\-)+[\w\d]+\:)?)`
+	SmileyRegex         string = `(?i)<(:.+:)(\d+)>`
 )
 
 // SmileyStats is struct which represents plugin configuration
 type SmileyStats struct {
 	dbConn *sql.DB
-	cache  *cache.Cache
 }
 
 // NewSmileyStats returns set up instance of SmileyStats
@@ -40,9 +37,7 @@ func NewSmileyStats(MysqlDbHost, MysqlDbPort, MysqlDbUser, MysqlDbPassword strin
 		return nil, err
 	}
 
-	c := cache.New(5*time.Second, 10*time.Second)
-
-	return &SmileyStats{dbConn: db, cache: c}, nil
+	return &SmileyStats{dbConn: db}, nil
 }
 
 // Subscribe is method which subscribes plugin to all needed events
@@ -78,83 +73,25 @@ func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageC
 		return
 	}
 
-	smileys := regexpSmiley.FindAllString(m.Content, -1)
+	smileys := regexpSmiley.FindAllStringSubmatch(m.Content, -1)
 
 	if strings.HasPrefix(m.Content, "!pts") {
 		if len(m.Mentions) > 0 {
 			sm.printUserStat(s, m.Mentions[0].ID, m.ChannelID)
+		} else if smileys != nil {
+			sm.printSmileyStat(s, smileys[0][1], m.ChannelID)
 		}
-		sm.printSmileyStat(s, smileys[0], m.ChannelID)
-
 		return
 	}
 
 	if smileys == nil {
 		return
 	}
-
-	channel, err := s.Channel(m.ChannelID)
-
-	if err != nil {
-		log.Println("Unable to get channel info: ", err)
-
-		return
-	}
-
-	guild, err := s.Guild(channel.GuildID)
-
-	if err != nil {
-		log.Println("Unable to get guild info: ", err)
-
-		return
-	}
-
-	// Server specific IDs
-	// TODO: Improve speed of algorithm
-	for i, smiley := range smileys {
-		idsToRemove := []int{}
-		hash := md5.Sum([]byte("Smiley_" + m.Author.Username + smiley))
-
-		if _, ok := sm.cache.Get(string(hash[:])); ok == true {
-			continue
-		}
-
-		for _, emoji := range guild.Emojis {
-			if smiley == (":" + emoji.Name + ":") {
-				if err := sm.insertSmiley(emoji.ID, smiley, m.Author.ID, m.Author.Username); err != nil {
-					log.Println("Smiley Insert Failed: ", err)
-
-					return
-				}
-				sm.cache.SetDefault(string(hash[:]), string(hash[:]))
-				idsToRemove = append(idsToRemove, i)
-			}
-		}
-
-		for _, i := range idsToRemove {
-			if len(smileys) == 1 {
-				smileys = []string{}
-			} else {
-				smileys[i] = smileys[len(smileys)-1]
-			}
-		}
-	}
-
-	// Common ids
 	for _, smiley := range smileys {
-		hash := md5.Sum([]byte("Smiley_" + m.Author.Username + smiley))
-
-		if _, ok := sm.cache.Get(string(hash[:])); ok == true {
-			continue
-		}
-
-		if err := sm.insertSmiley("", smiley, m.Author.ID, m.Author.Username); err != nil {
+		if err := sm.insertSmiley(smiley[2], smiley[1], m.Author.ID, m.Author.Username); err != nil {
 			log.Println("Smiley Insert Failed: ", err)
-
 			return
 		}
-
-		sm.cache.SetDefault(string(hash[:]), string(hash[:]))
 	}
 }
 
@@ -267,7 +204,7 @@ func (sm *SmileyStats) printSmileyStat(s *discordgo.Session, smiley, channelID s
 }
 
 func (sm *SmileyStats) printUserStat(s *discordgo.Session, userID, channelID string) error {
-        sqlString := `
+	sqlString := `
 	SELECT COUNT(emojiId) as usages, emojiName, emojiId, userName
 	FROM smileyHistory
 	WHERE userId = ?
@@ -275,39 +212,39 @@ func (sm *SmileyStats) printUserStat(s *discordgo.Session, userID, channelID str
 	ORDER BY usages
 	DESC LIMIT 10;`
 
-        rows, err := sm.dbConn.Query(sqlString, userID)
+	rows, err := sm.dbConn.Query(sqlString, userID)
 
-        if err != nil {
-                return err
-        }
+	if err != nil {
+		return err
+	}
 
-        defer rows.Close()
+	defer rows.Close()
 
-        stats := ""
+	stats := ""
 
-        i := 0
-        for rows.Next() {
-                i += 1
+	i := 0
+	for rows.Next() {
+		i += 1
 
-                var count, emoticonName, emoticonId, userName string
-                rows.Scan(&count, &emoticonName, &emoticonId, &userName)
+		var count, emoticonName, emoticonId, userName string
+		rows.Scan(&count, &emoticonName, &emoticonId, &userName)
 
-                if i == 1 {
-                        stats += fmt.Sprintf("User <@%s> top:\n", userID)
-                }
+		if i == 1 {
+			stats += fmt.Sprintf("User <@%s> top:\n", userID)
+		}
 
 		smileyString := ""
 
-                if emoticonId != "" {
-                        smileyString = fmt.Sprintf("<%s%v>", emoticonName, emoticonId)
-                } else {
+		if emoticonId != "" {
+			smileyString = fmt.Sprintf("<%s%v>", emoticonName, emoticonId)
+		} else {
 			smileyString = emoticonName
-                }
+		}
 
-                stats += fmt.Sprintf("#%d - %s %s usages\n", i, smileyString, count)
-        }
+		stats += fmt.Sprintf("#%d - %s %s usages\n", i, smileyString, count)
+	}
 
-        s.ChannelMessageSend(channelID, stats)
+	s.ChannelMessageSend(channelID, stats)
 
-        return nil
+	return nil
 }
