@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"io/ioutil"
-	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -14,10 +13,11 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"log"
+	"regexp"
 )
 
 const (
@@ -53,53 +53,73 @@ func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 		return
 	}
 
-	if strings.HasPrefix(m.Content, "!confify") {
-		log.Println("Starting confify image")
-		defer log.Println("Finishing confify image")
+	if !strings.HasPrefix(m.Content, "!confify") {
+		return
+	}
 
-		imgCh := make(chan string)
-		ticksWaiting := 1
-		message, _ := s.ChannelMessageSend(m.ChannelID, "Processing"+strings.Repeat(".", ticksWaiting%4))
+	log.Println("Starting confify image")
+	defer log.Println("Finishing confify image")
 
-		regexpImage, err := regexp.Compile(ImageRegex)
+	imgCh := make(chan string)
+	ticksWaiting := 1
+	message, _ := s.ChannelMessageSend(m.ChannelID, "Processing"+strings.Repeat(".", ticksWaiting%4))
 
+	regexpImage, err := regexp.Compile(ImageRegex)
+
+	if err != nil {
+		log.Println("Error: ", err)
+		return
+	}
+
+	var imageString string
+	if imageString = regexpImage.FindString(m.Content); imageString == "" {
+		messages, err := s.ChannelMessages(m.ChannelID, 10, message.ID, "", "")
 		if err != nil {
-			log.Println("Error: ", err)
-			return
+			log.Println(err)
 		}
 
-		var imageString string
+		messages = append([]*discordgo.Message{m.Message}, messages...)
 
-		if imageString = regexpImage.FindString(m.Content); imageString == "" {
-			s.ChannelMessageEdit(m.ChannelID, message.ID, "Please, provide image link with PNG or JPEG extension")
-
-			return
-		}
-
-		go c.processImage(imgCh, imageString)
-
-		for {
-			time.Sleep(200 * time.Millisecond)
-			select {
-			case image := <-imgCh:
-				s.ChannelMessageEdit(m.ChannelID, message.ID, "Processed file: "+c.BaseUrl+image)
-
-				if image == "" {
-					s.ChannelMessageEdit(
-						m.ChannelID,
-						message.ID,
-						"Error during processing, please, notify PandaSam about it")
+		loop:
+		for _, m := range messages {
+			for _, a := range m.Attachments {
+				log.Println(a)
+				if imageString = regexpImage.FindString(a.URL); imageString != "" {
+					break loop
 				}
+			}
+		}
+	}
 
+	if imageString == "" {
+		s.ChannelMessageEdit(m.ChannelID, message.ID, "Please, provide image link with PNG or JPEG extension")
+
+		return
+	}
+
+	go c.processImage(imgCh, imageString)
+
+	for {
+		time.Sleep(500 * time.Millisecond)
+		select {
+		case image := <-imgCh:
+			s.ChannelMessageEdit(m.ChannelID, message.ID, "Processed file: "+c.BaseUrl+image)
+
+			if image == "" {
+				s.ChannelMessageEdit(
+					m.ChannelID,
+					message.ID,
+					"Error during processing, please, notify PandaSam about it")
+			}
+
+			return
+		default:
+			fmt.Println("Waiting for image being processed")
+			ticksWaiting += 1
+			s.ChannelMessageEdit(m.ChannelID, message.ID, "Processing"+strings.Repeat(".", ticksWaiting%4))
+			if ticksWaiting > 50 {
+				s.ChannelMessageEdit(m.ChannelID, message.ID, "Processing time exceeed")
 				return
-			default:
-				fmt.Println("Waiting for image being processed")
-				ticksWaiting += 1
-				s.ChannelMessageEdit(m.ChannelID, message.ID, "Processing"+strings.Repeat(".", ticksWaiting%4))
-				if ticksWaiting > 50 {
-					s.ChannelMessageEdit(m.ChannelID, message.ID, "Processing time exceeed")
-					return
-				}
 			}
 		}
 	}
