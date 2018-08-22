@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/patrickmn/go-cache"
 	"log"
 	"regexp"
 	"strings"
@@ -14,12 +15,13 @@ import (
 
 const (
 	DatabaseSmileyStats string = "pandabot"
-	SmileyRegex         string = `(?i)<(:.+:)(\d+)>`
+	SmileyRegex         string = `(?i)<(:[^>]+:)(\d+)>`
 )
 
 // SmileyStats is struct which represents plugin configuration
 type SmileyStats struct {
 	dbConn *sql.DB
+	cache       *cache.Cache
 }
 
 // NewSmileyStats returns set up instance of SmileyStats
@@ -37,17 +39,20 @@ func NewSmileyStats(MysqlDbHost, MysqlDbPort, MysqlDbUser, MysqlDbPassword strin
 		return nil, err
 	}
 
-	return &SmileyStats{dbConn: db}, nil
+	c := cache.New(cache.NoExpiration, cache.NoExpiration)
+
+	return &SmileyStats{dbConn: db, cache: c}, nil
 }
 
 // Subscribe is method which subscribes plugin to all needed events
 func (sm *SmileyStats) Subscribe(dg *discordgo.Session) {
 	dg.AddHandler(sm.MessageCreate)
+	dg.AddHandler(sm.MessageReactionAdd)
 }
 
 func (sm *SmileyStats) GetInfo() map[string]string {
 	return map[string]string{
-		"!pts": "Prints top 10 of amojis used. Pass emoji as an argument to see personal stat for this emoji",
+		"!pts": "Prints top 10 of emojis used. Pass emoji as an argument to see personal stat for this emoji",
 	}
 }
 
@@ -95,7 +100,28 @@ func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageC
 	}
 }
 
+func (sm *SmileyStats) MessageReactionAdd(s *discordgo.Session, mr *discordgo.MessageReactionAdd) {
+	if mr.Emoji.ID == "" {
+		return
+	}
+
+	user, err := s.User(mr.UserID)
+	if err != nil {
+		log.Println("fetch user id failed: ", err)
+		return
+	}
+
+	if err := sm.insertSmiley(mr.Emoji.ID, `:` + mr.Emoji.Name + `:`, user.ID, user.Username); err != nil {
+		log.Println("Smiley Insert Failed: ", err)
+		return
+	}
+}
+
 func (sm *SmileyStats) insertSmiley(emojiID, emojiName, authorID, authorName string) error {
+	if _, ok := sm.cache.Get(emojiID + authorID); ok {
+		return nil
+	}
+
 	sqlString := `
 		INSERT IGNORE INTO smileyHistory
 			(emojiId, emojiName, userId, userName, createDatetime)
@@ -114,6 +140,8 @@ func (sm *SmileyStats) insertSmiley(emojiID, emojiName, authorID, authorName str
 	if err != nil {
 		return err
 	}
+
+	sm.cache.Set(emojiID + authorID, true, 1 * time.Second)
 
 	defer r.Close()
 

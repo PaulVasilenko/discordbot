@@ -76,6 +76,8 @@ func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 		messages, err := s.ChannelMessages(m.ChannelID, 10, message.ID, "", "")
 		if err != nil {
 			log.Println(err)
+
+			return
 		}
 
 		messages = append([]*discordgo.Message{m.Message}, messages...)
@@ -83,7 +85,6 @@ func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 		loop:
 		for _, m := range messages {
 			for _, a := range m.Attachments {
-				log.Println(a)
 				if imageString = regexpImage.FindString(a.URL); imageString != "" {
 					break loop
 				}
