@@ -72,22 +72,21 @@ func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 	}
 
 	var imageString string
-	if imageString = regexpImage.FindString(m.Content); imageString == "" {
-		messages, err := s.ChannelMessages(m.ChannelID, 10, message.ID, "", "")
-		if err != nil {
-			log.Println(err)
+	messages, err := s.ChannelMessages(m.ChannelID, 10, message.ID, "", "")
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	messages = append([]*discordgo.Message{m.Message}, messages...)
 
-			return
+	loop:
+	for _, m := range messages {
+		if imageString = regexpImage.FindString(m.Content); imageString != "" {
+			break loop
 		}
-
-		messages = append([]*discordgo.Message{m.Message}, messages...)
-
-		loop:
-		for _, m := range messages {
-			for _, a := range m.Attachments {
-				if imageString = regexpImage.FindString(a.URL); imageString != "" {
-					break loop
-				}
+		for _, a := range m.Attachments {
+			if imageString = regexpImage.FindString(a.URL); imageString != "" {
+				break loop
 			}
 		}
 	}
