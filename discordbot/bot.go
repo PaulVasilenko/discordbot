@@ -7,7 +7,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/facebookgo/flagconfig"
 	"github.com/paulvasilenko/discordbot/discordbot/confify"
-	"github.com/paulvasilenko/discordbot/discordbot/gamehighlighter"
 	"github.com/paulvasilenko/discordbot/discordbot/homog"
 	"github.com/paulvasilenko/discordbot/discordbot/quoter"
 	"github.com/paulvasilenko/discordbot/discordbot/racing"
@@ -33,57 +32,6 @@ var (
 	MySQLDbUser = flag.String("mysqlDbUser", "artshadow", "Mysql Db Port")
 	MySQLDbPass = flag.String("mysqlDbPass", "", "Mysql Db Port")
 )
-
-type Command interface {
-	Subscribe(s *discordgo.Session)
-	GetInfo() map[string]string
-}
-
-type Helper struct {
-	CommandDocs map[string]string
-}
-
-func (h *Helper) AddDocs(s Command) {
-	for k, v := range s.GetInfo() {
-		h.CommandDocs[k] = v
-	}
-}
-
-func (h *Helper) Subscribe(s *discordgo.Session) {
-	s.AddHandler(h.MessageCreate)
-}
-
-func (h *Helper) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	if m.Author.Bot {
-		return
-	}
-
-	if !strings.HasPrefix(m.Content, "!pandahelp") {
-		return
-	}
-
-	args := strings.Split(m.Content, " ")
-
-	if len(args) > 1 {
-		info, ok := h.CommandDocs[args[1]]
-
-		if !ok {
-			return
-		}
-
-		s.ChannelMessageSend(m.ChannelID, info)
-
-		return
-	}
-
-	message := ""
-
-	for key, info := range h.CommandDocs {
-		message += key + ": " + info + "\n\n"
-	}
-
-	s.ChannelMessageSend(m.ChannelID, message)
-}
 
 func main() {
 	log.SetFlags(0)
@@ -115,54 +63,33 @@ func main() {
 	dg.AddHandler(ready)
 	dg.AddHandler(messageCreate)
 
-	plugins := []Command{
-		confify.NewConfify(*basePath, *baseUrl, *faces),
-		quoter.NewQuoter(),
-		homog.NewHomog()}
+	c := confify.NewConfify(*basePath, *baseUrl, *faces)
+	dg.AddHandler(c.MessageCreate)
 
-	for _, v := range plugins {
-		v.Subscribe(dg)
-	}
+	q := quoter.NewQuoter()
+	dg.AddHandler(q.MessageReactionAdd)
 
-	gamehighlighterStruct, err := gamehighlighter.NewGameHighlighter(*MongoDbHost, *MongoDbPort)
-
-	if err != nil {
-		log.Println(err)
-	} else {
-		gamehighlighterStruct.Subscribe(dg)
-	}
-
-	plugins = append(plugins, gamehighlighterStruct)
+	h := homog.NewHomog()
+	dg.AddHandler(h.MessageCreate)
 
 	racingStruct, err := racing.NewRacing(
 		*MongoDbHost, *MongoDbPort, *MySQLDbHost, *MySQLDbPort, *MySQLDbUser, *MySQLDbPass,
 	)
-
 	if err != nil {
 		log.Println(err)
 	} else {
-		racingStruct.Subscribe(dg)
+		dg.AddHandler(racingStruct.MessageCreate)
 	}
 
-	plugins = append(plugins, racingStruct)
+
 
 	smileystatsStruct, err := smileystats.NewSmileyStats(*MySQLDbHost, *MySQLDbPort, *MySQLDbUser, *MySQLDbPass)
-
 	if err != nil {
 		log.Println(err)
 	} else {
-		smileystatsStruct.Subscribe(dg)
+		dg.AddHandler(smileystatsStruct.MessageCreate)
+		dg.AddHandler(smileystatsStruct.MessageReactionAdd)
 	}
-
-	plugins = append(plugins, smileystatsStruct)
-
-	helper := &Helper{CommandDocs: map[string]string{}}
-
-	for _, plugin := range plugins {
-		helper.AddDocs(plugin)
-	}
-
-	helper.Subscribe(dg)
 
 	err = dg.Open()
 
@@ -173,11 +100,8 @@ func main() {
 	defer dg.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
-
 	go signalHandler(cancel)
-
 	log.Println("PandaBot is now running.  Press CTRL-C to exit.")
-
 	<-ctx.Done()
 	return
 }
@@ -196,12 +120,6 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			fmt.Println("ChannelMessageSend error:", err)
 		}
 		return
-	}
-}
-
-func threeHundred(s *discordgo.Session, m *discordgo.MessageCreate) {
-	if strings.Contains(m.Content, "300") || strings.Contains(m.Content, "триста") {
-		s.ChannelMessageSend(m.ChannelID, "Отсоси у легалиста")
 	}
 }
 

@@ -24,3 +24,7 @@ _testmain.go
 *.prof
 
 .idea/
+
+deployment/bot/config.conf
+deployment/bot/faces/
+deployment/data

@@ -13,10 +13,6 @@ func NewQuoter() *Quoter {
 	return &Quoter{}
 }
 
-func (q *Quoter) Subscribe(s *discordgo.Session) {
-	s.AddHandler(q.MessageReactionAdd)
-}
-
 // GetInfo returns info for command
 func (q *Quoter) GetInfo() map[string]string {
 	return map[string]string{
