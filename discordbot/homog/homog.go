@@ -15,11 +15,6 @@ func NewHomog() *Homog {
 	return &Homog{}
 }
 
-// Subscribe is a method to subscribe to any events required by plugin
-func (h *Homog) Subscribe(s *discordgo.Session) {
-	s.AddHandler(h.MessageCreate)
-}
-
 func (h *Homog) GetInfo() map[string]string {
 	return map[string]string{
 		"!homog":  "Homogenezate message, using % symbol to split message into two parts. Used for plural messages",

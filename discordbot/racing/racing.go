@@ -27,7 +27,6 @@ const (
 	CommandJoinedRace = "!rjoined"
 
 	RacerEmoji      = ":wheelchair:"
-	RacerCloudEmoji = ":cloud:"
 
 	DatabasePandaBot = "pandabot"
 	DatetimeLayout   = "2006-01-02 15:04:05"
@@ -89,10 +88,6 @@ func NewRacing(MongoDbHost, MongoDbPort, MysqlDbHost, MysqlDbPort, MysqlDbUser, 
 	return &Racing{mongoDbConn: session, cache: c, mysqlDbConn: db}, nil
 }
 
-func (r *Racing) Subscribe(s *discordgo.Session) {
-	s.AddHandler(r.MessageCreate)
-}
-
 func (q *Racing) GetInfo() map[string]string {
 	return map[string]string{
 		CommandResetRace:  "Removes all joined players to race",
@@ -118,7 +113,6 @@ func (r *Racing) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate)
 	}
 }
 
-// TODO: Upgrade this method to prevent network delays affecting race
 // TODO: Refactor
 func (r *Racing) start(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if _, ok := r.cache.Get("Racing"); ok {
@@ -264,8 +258,6 @@ func (r *Racing) join(s *discordgo.Session, m *discordgo.MessageCreate) {
 	emojiRegex := regexp.MustCompile(SmileyRegex)
 
 	smiley := emojiRegex.FindString(m.Content)
-	fmt.Println(m.Content)
-
 	if smiley != "" {
 		channel, err := s.Channel(m.ChannelID)
 
@@ -284,10 +276,6 @@ func (r *Racing) join(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 		racer.Emoticon = smiley
-
-		fmt.Println(smiley)
-		fmt.Println(racer.Emoticon)
-
 		for _, emoji := range guild.Emojis {
 			if smiley == (":" + emoji.Name + ":") {
 				racer.Emoticon = "<" + smiley + emoji.ID + ">"
@@ -295,8 +283,6 @@ func (r *Racing) join(s *discordgo.Session, m *discordgo.MessageCreate) {
 				break
 			}
 		}
-
-		fmt.Println(racer.Emoticon)
 	}
 
 	err = r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Insert(racer)

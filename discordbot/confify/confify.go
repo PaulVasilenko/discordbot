@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"io/ioutil"
+	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -13,16 +14,18 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
-	"log"
-	"regexp"
+)
+
+var (
+	imageRegex = regexp.MustCompile(`(?i)(https?:\/\/.*\.(?:png|jpe?g))`)
 )
 
 const (
-	ImageRegex      string = `(?i)(https?:\/\/.*\.(?:png|jpe?g))`
-	DownloadTimeout int    = 60
+	downloadTimeout int = 60
 )
 
 // Confify is struct which represents Confify plugin with it's configurations
@@ -34,11 +37,6 @@ type Confify struct {
 
 func NewConfify(basePath, baseUrl, faces string) *Confify {
 	return &Confify{BasePath: basePath, BaseUrl: baseUrl, Faces: faces}
-}
-
-// Subscribe is method which subscribes plugin to all needed events
-func (c *Confify) Subscribe(s *discordgo.Session) {
-	s.AddHandler(c.MessageCreate)
 }
 
 // GetInfo returns map of info message
@@ -64,13 +62,6 @@ func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 	ticksWaiting := 1
 	message, _ := s.ChannelMessageSend(m.ChannelID, "Processing"+strings.Repeat(".", ticksWaiting%4))
 
-	regexpImage, err := regexp.Compile(ImageRegex)
-
-	if err != nil {
-		log.Println("Error: ", err)
-		return
-	}
-
 	var imageString string
 	messages, err := s.ChannelMessages(m.ChannelID, 10, message.ID, "", "")
 	if err != nil {
@@ -79,13 +70,13 @@ func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 	}
 	messages = append([]*discordgo.Message{m.Message}, messages...)
 
-	loop:
+loop:
 	for _, m := range messages {
-		if imageString = regexpImage.FindString(m.Content); imageString != "" {
+		if imageString = imageRegex.FindString(m.Content); imageString != "" {
 			break loop
 		}
 		for _, a := range m.Attachments {
-			if imageString = regexpImage.FindString(a.URL); imageString != "" {
+			if imageString = imageRegex.FindString(a.URL); imageString != "" {
 				break loop
 			}
 		}
@@ -114,7 +105,6 @@ func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 
 			return
 		default:
-			fmt.Println("Waiting for image being processed")
 			ticksWaiting += 1
 			s.ChannelMessageEdit(m.ChannelID, message.ID, "Processing"+strings.Repeat(".", ticksWaiting%4))
 			if ticksWaiting > 50 {
@@ -167,7 +157,7 @@ func downloadFromUrl(dUrl string, filename string, path string) (string, string,
 		return "", "", errors.New(fmt.Sprintln("Error while creating folder", path, "-", err))
 	}
 
-	timeout := time.Duration(time.Duration(DownloadTimeout) * time.Second)
+	timeout := time.Duration(time.Duration(downloadTimeout) * time.Second)
 	client := &http.Client{
 		Timeout: timeout,
 	}

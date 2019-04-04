@@ -1,7 +1,0 @@
-[program:discordbot]
-autostart=true
-autorestart=true
-user=ubuntu
-command=/home/sites/go/bin/discordbot -c /etc/discordbot/config.conf
-stdout_logfile=syslog
-stderr_logfile=syslog

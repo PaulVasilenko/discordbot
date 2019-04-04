@@ -20,8 +20,8 @@ const (
 
 // SmileyStats is struct which represents plugin configuration
 type SmileyStats struct {
-	dbConn *sql.DB
-	cache       *cache.Cache
+	dbConn DB
+	cache  *cache.Cache
 }
 
 // NewSmileyStats returns set up instance of SmileyStats
@@ -42,12 +42,6 @@ func NewSmileyStats(MysqlDbHost, MysqlDbPort, MysqlDbUser, MysqlDbPassword strin
 	c := cache.New(cache.NoExpiration, cache.NoExpiration)
 
 	return &SmileyStats{dbConn: db, cache: c}, nil
-}
-
-// Subscribe is method which subscribes plugin to all needed events
-func (sm *SmileyStats) Subscribe(dg *discordgo.Session) {
-	dg.AddHandler(sm.MessageCreate)
-	dg.AddHandler(sm.MessageReactionAdd)
 }
 
 func (sm *SmileyStats) GetInfo() map[string]string {
