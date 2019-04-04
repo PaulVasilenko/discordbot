@@ -13,6 +13,7 @@ import (
 	"github.com/paulvasilenko/discordbot/discordbot/smileystats"
 	"log"
 	"log/syslog"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -25,6 +26,7 @@ var (
 	baseUrl     = flag.String("baseUrl", "", "Base url of local server where static is saved")
 	faces       = flag.String("faces", "/home/sites/faces", "Faces to add to photo")
 	basePath    = flag.String("basePath", "/var/www/static", "Path where files should be saved")
+	serverPort  = flag.String("port", ":80", "Port which is reserved for http file server")
 	MongoDbHost = flag.String("mongoDbHost", "127.0.0.1", "Mongo Db Host")
 	MongoDbPort = flag.String("mongoDbPort", "27017", "Mongo Db Port")
 	MySQLDbHost = flag.String("mysqlDbHost", "127.0.0.1", "Mysql Db Host")
@@ -53,7 +55,6 @@ func main() {
 	fmt.Println("Opening connection with token: ", *token)
 
 	dg, err := discordgo.New(*token)
-
 	if err != nil {
 		fmt.Println(err)
 
@@ -65,6 +66,13 @@ func main() {
 
 	c := confify.NewConfify(*basePath, *baseUrl, *faces)
 	dg.AddHandler(c.MessageCreate)
+
+	http.Handle("/", http.FileServer(http.Dir(*basePath)))
+	go func() {
+		if err := http.ListenAndServe(*serverPort, nil); err != nil {
+			log.Println("failed to run fileserver: ", err)
+		}
+	}()
 
 	q := quoter.NewQuoter()
 	dg.AddHandler(q.MessageReactionAdd)

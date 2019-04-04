@@ -55,9 +55,6 @@ func (c *Confify) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 		return
 	}
 
-	s.ChannelMessageSend(m.ChannelID, "Confify is temporary disabled")
-	return
-
 	log.Println("Starting confify image")
 	defer log.Println("Finishing confify image")
 
