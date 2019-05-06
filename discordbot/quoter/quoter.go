@@ -67,11 +67,16 @@ func (q *Quoter) MessageReactionAdd(s *discordgo.Session, mr *discordgo.MessageR
 	}
 
 	embed := &discordgo.MessageEmbed{
+		Color: 0x7289DA,
+		Type: "rich",
+		Description: "<@" + quoter.ID + "> **quoting** <@" + messages[lastIndex].Author.ID + ">",
 		Fields: []*discordgo.MessageEmbedField{
-			{Name: "Quoter", Value: quoter.Username},
-			{Name: "Sender", Value: "<@" + messages[lastIndex].Author.ID + ">"},
-			{Name: "Message", Value: content},
+			{
+				Name:   "Message",
+				Value:  content,
+			},
 		},
+		Timestamp: string(messages[lastIndex].Timestamp),
 	}
 
 	_, err = s.ChannelMessageSendEmbed(mr.ChannelID, embed)
