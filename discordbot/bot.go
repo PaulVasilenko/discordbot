@@ -11,6 +11,7 @@ import (
 	"github.com/paulvasilenko/discordbot/discordbot/quoter"
 	"github.com/paulvasilenko/discordbot/discordbot/racing"
 	"github.com/paulvasilenko/discordbot/discordbot/smileystats"
+	"github.com/paulvasilenko/discordbot/discordbot/tts"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -80,6 +81,15 @@ func main() {
 	h := homog.NewHomog()
 	dg.AddHandler(h.MessageCreate)
 
+	textToSpeech := tts.NewTTS(&tts.TTSClient{
+		Client:     &http.Client{},
+		RequestURL: "https://streamlabs.com/polly/speak",
+		BasePath:   *basePath,
+		BaseURL:    *baseUrl,
+	})
+
+	dg.AddHandler(textToSpeech.MessageReactionAdd)
+
 	racingStruct, err := racing.NewRacing(
 		*MongoDbHost, *MongoDbPort, *MySQLDbHost, *MySQLDbPort, *MySQLDbUser, *MySQLDbPass,
 	)
@@ -88,8 +98,6 @@ func main() {
 	} else {
 		dg.AddHandler(racingStruct.MessageCreate)
 	}
-
-
 
 	smileystatsStruct, err := smileystats.NewSmileyStats(*MySQLDbHost, *MySQLDbPort, *MySQLDbUser, *MySQLDbPass)
 	if err != nil {
