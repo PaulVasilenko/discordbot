@@ -4,17 +4,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"io"
 	"net/http"
+
+	"github.com/pkg/errors"
 )
 
 type TTSClient struct {
 	*http.Client
 
 	RequestURL string
-	BasePath   string
-	BaseURL    string
 }
 
 type requestBody struct {

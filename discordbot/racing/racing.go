@@ -1,19 +1,18 @@
 package racing
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"github.com/patrickmn/go-cache"
-	"gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
-	"log"
 	"math/rand"
 	"strings"
 	"time"
-	//"regexp"
-	"context"
-	"database/sql"
-	"regexp"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/patrickmn/go-cache"
+	log "github.com/sirupsen/logrus"
+	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
 const (
@@ -26,10 +25,9 @@ const (
 	CommandResetRace  = "!rreset"
 	CommandJoinedRace = "!rjoined"
 
-	RacerEmoji      = ":wheelchair:"
+	RacerEmoji = ":wheelchair:"
 
-	DatabasePandaBot = "pandabot"
-	DatetimeLayout   = "2006-01-02 15:04:05"
+	DatetimeLayout = "2006-01-02 15:04:05"
 
 	RaceDelimiter   = "   "
 	RaceTrackLength = 25
@@ -38,7 +36,6 @@ const (
 
 	SpeedCoefficient       = 70
 	BeingSlowedCoefficient = 10
-	SmileyRegex            = `(?i)(\:[\w\d\_]+\:(\:([\w\d]+\-)+[\w\d]+\:)?)`
 )
 
 type Racer struct {
@@ -58,34 +55,19 @@ type Racing struct {
 	cache       *cache.Cache
 }
 
-func NewRacing(MongoDbHost, MongoDbPort, MysqlDbHost, MysqlDbPort, MysqlDbUser, MysqlDbPassword string) (*Racing, error) {
-	session, err := mgo.Dial("mongodb://" + MongoDbHost + ":" + MongoDbPort)
-
-	if err != nil {
-		return nil, err
-	}
-
-	collectionJoinedIndex := mgo.Index{
+func NewRacing(mgoConn *mgo.Session, mysqlConn *sql.DB) (*Racing, error) {
+	if err := mgoConn.DB(MongoDBRacing).C(MongoCollectionRacing).EnsureIndex(mgo.Index{
 		Key:      []string{"id"},
 		Unique:   true,
-		DropDups: true}
-
-	err = session.DB(MongoDBRacing).C(MongoCollectionRacing).EnsureIndex(collectionJoinedIndex)
-
-	if err != nil {
+		DropDups: true,
+	}); err != nil {
 		return nil, err
 	}
 
-	c := cache.New(cache.NoExpiration, cache.NoExpiration)
-
-	dsn := MysqlDbUser + ":" + MysqlDbPassword + "@tcp(" + MysqlDbHost + ":" + MysqlDbPort + ")/" + DatabasePandaBot
-	db, err := sql.Open("mysql", dsn)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &Racing{mongoDbConn: session, cache: c, mysqlDbConn: db}, nil
+	return &Racing{
+		mongoDbConn: mgoConn,
+		cache:       cache.New(cache.NoExpiration, cache.NoExpiration),
+		mysqlDbConn: mysqlConn}, nil
 }
 
 func (q *Racing) GetInfo() map[string]string {
@@ -253,39 +235,8 @@ func (r *Racing) join(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	racer := &Racer{ID: m.Author.ID, Username: m.Author.Username, Emoticon: RacerEmoji}
-
-	emojiRegex := regexp.MustCompile(SmileyRegex)
-
-	smiley := emojiRegex.FindString(m.Content)
-	if smiley != "" {
-		channel, err := s.Channel(m.ChannelID)
-
-		if err != nil {
-			log.Println("Unable to get channel info: ", err)
-
-			return
-		}
-
-		guild, err := s.Guild(channel.GuildID)
-
-		if err != nil {
-			log.Println("Unable to get guild info: ", err)
-
-			return
-		}
-
-		racer.Emoticon = smiley
-		for _, emoji := range guild.Emojis {
-			if smiley == (":" + emoji.Name + ":") {
-				racer.Emoticon = "<" + smiley + emoji.ID + ">"
-
-				break
-			}
-		}
-	}
-
-	err = r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Insert(racer)
+	err = r.mongoDbConn.DB(MongoDBRacing).C(MongoCollectionRacing).Insert(
+		&Racer{ID: m.Author.ID, Username: m.Author.Username, Emoticon: RacerEmoji})
 
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") {

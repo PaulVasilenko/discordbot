@@ -1,0 +1,14 @@
+Token: YourToken
+BaseUrl: YourUrl
+BasePath: /var/www/static
+FacesDir: /home/sites/go/src/github.com/paulvasilenko/discordbot/faces
+Mongo:
+  Host: mongodb
+  Port: 27017
+Mysql:
+  Host: mysqldb
+  Port: 3306
+  User: root
+  Password: root
+TTS:
+  RequestURL: https://streamlabs.com/polly/speak
