@@ -4,11 +4,12 @@ import (
 	"context"
 	"crypto/md5"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"golang.org/x/sync/errgroup"
 	"io"
-	"log"
 	"unicode/utf8"
+
+	"github.com/bwmarrin/discordgo"
+	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 type TTSProvider interface {
@@ -27,7 +28,7 @@ func NewTTS(p TTSProvider) *TextToSpeech {
 }
 
 // MessageReactionAdd
-func(tts *TextToSpeech) MessageReactionAdd(s *discordgo.Session, mr *discordgo.MessageReactionAdd) {
+func (tts *TextToSpeech) MessageReactionAdd(s *discordgo.Session, mr *discordgo.MessageReactionAdd) {
 	if mr.Emoji.Name != "🔈" {
 		return
 	}
@@ -67,7 +68,7 @@ func(tts *TextToSpeech) MessageReactionAdd(s *discordgo.Session, mr *discordgo.M
 	}
 
 	s.ChannelMessageSendComplex(mr.ChannelID, &discordgo.MessageSend{
-		Files:   []*discordgo.File{
+		Files: []*discordgo.File{
 			{
 				Name:        fmt.Sprintf("%x", md5.Sum([]byte(message.Content))) + ".ogg",
 				ContentType: "audio/ogg",

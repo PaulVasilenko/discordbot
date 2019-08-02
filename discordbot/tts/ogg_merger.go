@@ -2,13 +2,14 @@ package tts
 
 import (
 	"bytes"
-	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
+
+	"github.com/pkg/errors"
 )
 
 const (
-	//packetContinue = 0x1
+//packetContinue = 0x1
 )
 
 func MergeOggStreams(processedParts []io.Reader) (io.Reader, error) {

@@ -2,20 +2,18 @@
 package smileystats
 
 import (
-	"database/sql"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/patrickmn/go-cache"
-	"log"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/patrickmn/go-cache"
+	log "github.com/sirupsen/logrus"
 )
 
-const (
-	DatabaseSmileyStats string = "pandabot"
-	SmileyRegex         string = `(?i)<(:[^>]+:)(\d+)>`
+var (
+	smileyRegex = regexp.MustCompile(`(?i)<(:[^>]+:)(\d+)>`)
 )
 
 // SmileyStats is struct which represents plugin configuration
@@ -25,23 +23,11 @@ type SmileyStats struct {
 }
 
 // NewSmileyStats returns set up instance of SmileyStats
-func NewSmileyStats(MysqlDbHost, MysqlDbPort, MysqlDbUser, MysqlDbPassword string) (*SmileyStats, error) {
-	dsn := MysqlDbUser + ":" + MysqlDbPassword + "@tcp(" + MysqlDbHost + ":" + MysqlDbPort + ")/" + DatabaseSmileyStats
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		return nil, err
+func NewSmileyStats(conn DB) *SmileyStats {
+	return &SmileyStats{
+		dbConn: conn,
+		cache:  cache.New(cache.NoExpiration, cache.NoExpiration),
 	}
-	db.SetMaxIdleConns(1)
-	db.SetMaxOpenConns(50)
-	db.SetConnMaxLifetime(1 * time.Second)
-
-	if err != nil {
-		return nil, err
-	}
-
-	c := cache.New(cache.NoExpiration, cache.NoExpiration)
-
-	return &SmileyStats{dbConn: db, cache: c}, nil
 }
 
 func (sm *SmileyStats) GetInfo() map[string]string {
@@ -64,16 +50,7 @@ func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageC
 		return
 	}
 
-	regexpSmiley, err := regexp.Compile(SmileyRegex)
-
-	if err != nil {
-		log.Println(err)
-
-		return
-	}
-
-	smileys := regexpSmiley.FindAllStringSubmatch(m.Content, -1)
-
+	smileys := smileyRegex.FindAllStringSubmatch(m.Content, -1)
 	if strings.HasPrefix(m.Content, "!pts") {
 		if len(m.Mentions) > 0 {
 			sm.printUserStat(s, m.Mentions[0].ID, m.ChannelID)
@@ -104,8 +81,11 @@ func (sm *SmileyStats) MessageReactionAdd(s *discordgo.Session, mr *discordgo.Me
 		log.Println("fetch user id failed: ", err)
 		return
 	}
+	if user.Bot {
+		return
+	}
 
-	if err := sm.insertSmiley(mr.Emoji.ID, `:` + mr.Emoji.Name + `:`, user.ID, user.Username); err != nil {
+	if err := sm.insertSmiley(mr.Emoji.ID, `:`+mr.Emoji.Name+`:`, user.ID, user.Username); err != nil {
 		log.Println("Smiley Insert Failed: ", err)
 		return
 	}
@@ -135,7 +115,7 @@ func (sm *SmileyStats) insertSmiley(emojiID, emojiName, authorID, authorName str
 		return err
 	}
 
-	sm.cache.Set(emojiID + authorID, true, 1 * time.Second)
+	sm.cache.Set(emojiID+authorID, true, 1*time.Second)
 
 	defer r.Close()
 

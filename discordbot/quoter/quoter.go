@@ -2,9 +2,10 @@ package quoter
 
 import (
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"log"
 	"strconv"
+
+	"github.com/bwmarrin/discordgo"
+	log "github.com/sirupsen/logrus"
 )
 
 type Quoter struct{}
@@ -67,13 +68,13 @@ func (q *Quoter) MessageReactionAdd(s *discordgo.Session, mr *discordgo.MessageR
 	}
 
 	embed := &discordgo.MessageEmbed{
-		Color: 0x7289DA,
-		Type: "rich",
+		Color:       0x7289DA,
+		Type:        "rich",
 		Description: "<@" + quoter.ID + "> **quoting** <@" + messages[lastIndex].Author.ID + ">",
 		Fields: []*discordgo.MessageEmbedField{
 			{
-				Name:   "Message",
-				Value:  content,
+				Name:  "Message",
+				Value: content,
 			},
 		},
 		Timestamp: string(messages[lastIndex].Timestamp),

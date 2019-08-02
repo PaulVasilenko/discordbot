@@ -2,11 +2,8 @@ package confify
 
 import (
 	"crypto/md5"
-	"errors"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
 	"io/ioutil"
-	"log"
 	"mime"
 	"net/http"
 	"net/url"
@@ -18,6 +15,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -116,13 +116,13 @@ loop:
 }
 
 func (c *Confify) processImage(imgCh chan<- string, imageString string) {
-	fmt.Println("Started image processing")
-	defer fmt.Println("Finished image processing")
+	log.Println("Started image processing")
+	defer log.Println("Finished image processing")
 
 	downloadedFilename, downloadedFilePath, err := downloadFromUrl(imageString, "", c.BasePath)
 
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		imgCh <- ""
 		return
 	}
@@ -140,12 +140,12 @@ func (c *Confify) processImage(imgCh chan<- string, imageString string) {
 	out, err := cmd.CombinedOutput()
 
 	if err != nil {
-		fmt.Println("Non-zero exit code: " + err.Error() + ", " + string(out))
+		log.Println("Non-zero exit code: " + err.Error() + ", " + string(out))
 	}
 
 	err = ioutil.WriteFile(outputFilePath, out, 0644)
 
-	fmt.Println("Image processed, putting in channel")
+	log.Println("Image processed, putting in channel")
 
 	imgCh <- outputFileName
 	return
@@ -154,7 +154,7 @@ func (c *Confify) processImage(imgCh chan<- string, imageString string) {
 func downloadFromUrl(dUrl string, filename string, path string) (string, string, error) {
 	err := os.MkdirAll(path, 755)
 	if err != nil {
-		return "", "", errors.New(fmt.Sprintln("Error while creating folder", path, "-", err))
+		return "", "", fmt.Errorf("failed to create folder %v: %v", path, err)
 	}
 
 	timeout := time.Duration(time.Duration(downloadTimeout) * time.Second)
@@ -163,12 +163,12 @@ func downloadFromUrl(dUrl string, filename string, path string) (string, string,
 	}
 	request, err := http.NewRequest("GET", dUrl, nil)
 	if err != nil {
-		return "", "", errors.New(fmt.Sprintln("Error while downloading", dUrl, "-", err))
+		return "", "", fmt.Errorf("failed to init request %v: %v", dUrl, err)
 	}
 	request.Header.Add("Accept-Encoding", "identity")
 	response, err := client.Do(request)
 	if err != nil {
-		return "", "", errors.New(fmt.Sprintln("Error while downloading", dUrl, "-", err))
+		return "", "", fmt.Errorf("failed to download %v: %v", dUrl, err)
 	}
 	defer response.Body.Close()
 
@@ -202,26 +202,21 @@ func downloadFromUrl(dUrl string, filename string, path string) (string, string,
 			}
 			i = i + 1
 		}
-		fmt.Printf("[%s] Saving possible duplicate (filenames match): %s to %s\n", time.Now().Format(time.Stamp), tmpPath, completePath)
+		log.Printf("[%s] Saving possible duplicate (filenames match): %s to %s\n", time.Now().Format(time.Stamp), tmpPath, completePath)
 	}
 
 	bodyOfResp, err := ioutil.ReadAll(response.Body)
-
 	if err != nil {
-		return "", "", errors.New(fmt.Sprintln("Could not read response", dUrl, "-", err))
+		return "", "", fmt.Errorf("failed to read %v response: %v", dUrl, err)
 	}
 
-	contentType := http.DetectContentType(bodyOfResp)
-	contentTypeParts := strings.Split(contentType, "/")
-
+	contentTypeParts := strings.Split(http.DetectContentType(bodyOfResp), "/")
 	if contentTypeParts[0] != "image" && contentTypeParts[0] != "video" {
-		return "", "", errors.New(fmt.Sprintln("No image or video found at", dUrl))
+		return "", "", fmt.Errorf("image not found at %v", dUrl)
 	}
 
-	err = ioutil.WriteFile(completePath, bodyOfResp, 0644)
-
-	if err != nil {
-		return "", "", errors.New(fmt.Sprintln("Error while writing to disk", dUrl, "-", err))
+	if err = ioutil.WriteFile(completePath, bodyOfResp, 0644); err != nil {
+		return "", "", fmt.Errorf("failed to write %v content to disk: %v", dUrl, err)
 	}
 
 	return filename, completePath, err
