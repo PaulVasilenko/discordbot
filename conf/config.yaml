@@ -12,3 +12,6 @@ Mysql:
   Password: root
 TTS:
   RequestURL: https://streamlabs.com/polly/speak
+SDR:
+  Texts: data.json
+  Gifts: images.json

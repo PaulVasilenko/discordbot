@@ -3,13 +3,19 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sync/errgroup"
+
+	"github.com/paulvasilenko/discordbot/discordbot/sdr"
 
 	"github.com/bwmarrin/discordgo"
 	_ "github.com/go-sql-driver/mysql"
@@ -47,6 +53,10 @@ type Config struct {
 	SmileyStats struct {
 		Blacklist []string `yaml:"Blacklist"`
 	} `yaml:"SmileyStats"`
+	SDR struct {
+		Texts string `yaml:"Texts"`
+		Gifts string `yaml:"Gifts"`
+	} `yaml:"SDR"`
 }
 
 func main() {
@@ -108,6 +118,36 @@ func main() {
 	emotesStats := smileystats.NewSmileyStats(mysqlConn)
 	dg.AddHandler(emotesStats.MessageCreate)
 	dg.AddHandler(emotesStats.MessageReactionAdd)
+
+	var (
+		texts map[int]string
+		gifts map[int]sdr.Gift
+	)
+	gr := errgroup.Group{}
+	gr.Go(func() error {
+		bytes, err := ioutil.ReadFile(conf.SDR.Texts)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(bytes, &texts)
+	})
+	gr.Go(func() error {
+		bytes, err := ioutil.ReadFile(conf.SDR.Gifts)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(bytes, &gifts)
+	})
+	if err := gr.Wait(); err != nil {
+		log.Fatal(err)
+	}
+
+	sdrPlugin, err := sdr.NewSDR(mongodbConn, texts, gifts)
+	if err != nil {
+		log.Println(err)
+	} else {
+		dg.AddHandler(sdrPlugin.MessageCreate)
+	}
 
 	if err = dg.Open(); err != nil {
 		log.Fatalf("error opening Discord session: %v", err)
