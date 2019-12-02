@@ -20,13 +20,16 @@ var (
 type SmileyStats struct {
 	dbConn DB
 	cache  *cache.Cache
+
+	blacklist map[string]string
 }
 
 // NewSmileyStats returns set up instance of SmileyStats
-func NewSmileyStats(conn DB) *SmileyStats {
+func NewSmileyStats(conn DB, blacklist map[string]string) *SmileyStats {
 	return &SmileyStats{
-		dbConn: conn,
-		cache:  cache.New(cache.NoExpiration, cache.NoExpiration),
+		dbConn:    conn,
+		cache:     cache.New(cache.NoExpiration, cache.NoExpiration),
+		blacklist: blacklist,
 	}
 }
 
@@ -64,6 +67,9 @@ func (sm *SmileyStats) MessageCreate(s *discordgo.Session, m *discordgo.MessageC
 		return
 	}
 	for _, smiley := range smileys {
+		if _, ok := sm.blacklist[smiley[1]]; ok {
+			continue
+		}
 		if err := sm.insertSmiley(smiley[2], smiley[1], m.Author.ID, m.Author.Username); err != nil {
 			log.Println("Smiley Insert Failed: ", err)
 			return
@@ -82,6 +88,10 @@ func (sm *SmileyStats) MessageReactionAdd(s *discordgo.Session, mr *discordgo.Me
 		return
 	}
 	if user.Bot {
+		return
+	}
+
+	if _, ok := sm.blacklist[mr.Emoji.Name]; ok {
 		return
 	}
 

@@ -88,13 +88,18 @@ loop:
 		return
 	}
 
-	go c.processImage(imgCh, imageString)
+	spoiler := strings.Contains(imageString, "SPOILER")
+	go c.processImage(imgCh, imageString, spoiler)
 
 	for {
 		time.Sleep(500 * time.Millisecond)
 		select {
 		case image := <-imgCh:
-			s.ChannelMessageEdit(m.ChannelID, message.ID, "Processed file: "+c.BaseUrl+image)
+			imageUrl := c.BaseUrl + image
+			if spoiler {
+				imageUrl = "||" + imageUrl + "||"
+			}
+			s.ChannelMessageEdit(m.ChannelID, message.ID, "Processed file: "+imageUrl)
 
 			if image == "" {
 				s.ChannelMessageEdit(
@@ -115,7 +120,7 @@ loop:
 	}
 }
 
-func (c *Confify) processImage(imgCh chan<- string, imageString string) {
+func (c *Confify) processImage(imgCh chan<- string, imageString string, spoiler bool) {
 	log.Println("Started image processing")
 	defer log.Println("Finished image processing")
 
@@ -129,6 +134,9 @@ func (c *Confify) processImage(imgCh chan<- string, imageString string) {
 	splittedString := strings.Split(downloadedFilename, ".")
 	fileExtension := splittedString[len(splittedString)-1]
 	outputFileName := fmt.Sprintf("%x", md5.Sum([]byte("processed_"+downloadedFilename+time.Now().Format(time.RFC3339Nano)))) + "." + fileExtension
+	if spoiler {
+		outputFileName = "SPOILER_" + outputFileName
+	}
 	outputFilePath := c.BasePath + "/" + outputFileName
 
 	args := []string{

@@ -51,7 +51,7 @@ type Config struct {
 		RequestURL string `yaml:"RequestURL"`
 	} `yaml:"TTS"`
 	SmileyStats struct {
-		Blacklist []string `yaml:"Blacklist"`
+		Blacklist map[string]string `yaml:"Blacklist"`
 	} `yaml:"SmileyStats"`
 	SDR struct {
 		Texts string `yaml:"Texts"`
@@ -115,7 +115,7 @@ func main() {
 		dg.AddHandler(racingStruct.MessageCreate)
 	}
 
-	emotesStats := smileystats.NewSmileyStats(mysqlConn)
+	emotesStats := smileystats.NewSmileyStats(mysqlConn, conf.SmileyStats.Blacklist)
 	dg.AddHandler(emotesStats.MessageCreate)
 	dg.AddHandler(emotesStats.MessageReactionAdd)
 

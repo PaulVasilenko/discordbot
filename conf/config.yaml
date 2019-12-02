@@ -2,6 +2,14 @@ Token: YourToken
 BaseUrl: YourUrl
 BasePath: /var/www/static
 FacesDir: /home/sites/go/src/github.com/paulvasilenko/discordbot/faces
+SmileyStats:
+  Blacklist:
+    wright: 469835876457775104
+    wleft: 469835876265099275
+    kakeraY: 605112931168026629
+    th: 469835872716455936
+    tw: 469835872188235796
+    kakera: 469835869059153940
 Mongo:
   Host: mongodb
   Port: 27017

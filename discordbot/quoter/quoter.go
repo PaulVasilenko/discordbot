@@ -22,7 +22,7 @@ func (q *Quoter) GetInfo() map[string]string {
 }
 
 func (q *Quoter) MessageReactionAdd(s *discordgo.Session, mr *discordgo.MessageReactionAdd) {
-	if mr.Emoji.Name != "©" {
+	if mr.Emoji.Name != "©️" && mr.Emoji.Name != "©" {
 		return
 	}
 
