@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -47,7 +46,7 @@ type resumePacket struct {
 }
 
 // Open creates a websocket connection to Discord.
-// See: https://discordapp.com/developers/docs/topics/gateway#connecting
+// See: https://discord.com/developers/docs/topics/gateway#connecting
 func (s *Session) Open() error {
 	s.log(LogInformational, "called")
 
@@ -80,11 +79,15 @@ func (s *Session) Open() error {
 	header.Add("accept-encoding", "zlib")
 	s.wsConn, _, err = websocket.DefaultDialer.Dial(s.gateway, header)
 	if err != nil {
-		s.log(LogWarning, "error connecting to gateway %s, %s", s.gateway, err)
+		s.log(LogError, "error connecting to gateway %s, %s", s.gateway, err)
 		s.gateway = "" // clear cached gateway
 		s.wsConn = nil // Just to be safe.
 		return err
 	}
+
+	s.wsConn.SetCloseHandler(func(code int, text string) error {
+		return nil
+	})
 
 	defer func() {
 		// because of this, all code below must set err to the error
@@ -257,11 +260,17 @@ type heartbeatOp struct {
 
 type helloOp struct {
 	HeartbeatInterval time.Duration `json:"heartbeat_interval"`
-	Trace             []string      `json:"_trace"`
 }
 
 // FailedHeartbeatAcks is the Number of heartbeat intervals to wait until forcing a connection restart.
 const FailedHeartbeatAcks time.Duration = 5 * time.Millisecond
+
+// HeartbeatLatency returns the latency between heartbeat acknowledgement and heartbeat send.
+func (s *Session) HeartbeatLatency() time.Duration {
+
+	return s.LastHeartbeatAck.Sub(s.LastHeartbeatSent)
+
+}
 
 // heartbeat sends regular heartbeats to Discord so it knows the client
 // is still connected.  If you do not send these heartbeats Discord will
@@ -283,8 +292,9 @@ func (s *Session) heartbeat(wsConn *websocket.Conn, listening <-chan interface{}
 		last := s.LastHeartbeatAck
 		s.RUnlock()
 		sequence := atomic.LoadInt64(s.sequence)
-		s.log(LogInformational, "sending gateway websocket heartbeat seq %d", sequence)
+		s.log(LogDebug, "sending gateway websocket heartbeat seq %d", sequence)
 		s.wsMutex.Lock()
+		s.LastHeartbeatSent = time.Now().UTC()
 		err = wsConn.WriteJSON(heartbeatOp{1, sequence})
 		s.wsMutex.Unlock()
 		if err != nil || time.Now().UTC().Sub(last) > (heartbeatIntervalMsec*FailedHeartbeatAcks) {
@@ -323,16 +333,8 @@ type updateStatusOp struct {
 	Data UpdateStatusData `json:"d"`
 }
 
-// UpdateStreamingStatus is used to update the user's streaming status.
-// If idle>0 then set status to idle.
-// If game!="" then set game.
-// If game!="" and url!="" then set the status type to streaming with the URL set.
-// if otherwise, set status to active, and no game.
-func (s *Session) UpdateStreamingStatus(idle int, game string, url string) (err error) {
-
-	s.log(LogInformational, "called")
-
-	usd := UpdateStatusData{
+func newUpdateStatusData(idle int, gameType GameType, game, url string) *UpdateStatusData {
+	usd := &UpdateStatusData{
 		Status: "online",
 	}
 
@@ -341,10 +343,6 @@ func (s *Session) UpdateStreamingStatus(idle int, game string, url string) (err 
 	}
 
 	if game != "" {
-		gameType := GameTypeGame
-		if url != "" {
-			gameType = GameTypeStreaming
-		}
 		usd.Game = &Game{
 			Name: game,
 			Type: gameType,
@@ -352,7 +350,35 @@ func (s *Session) UpdateStreamingStatus(idle int, game string, url string) (err 
 		}
 	}
 
-	return s.UpdateStatusComplex(usd)
+	return usd
+}
+
+// UpdateStatus is used to update the user's status.
+// If idle>0 then set status to idle.
+// If game!="" then set game.
+// if otherwise, set status to active, and no game.
+func (s *Session) UpdateStatus(idle int, game string) (err error) {
+	return s.UpdateStatusComplex(*newUpdateStatusData(idle, GameTypeGame, game, ""))
+}
+
+// UpdateStreamingStatus is used to update the user's streaming status.
+// If idle>0 then set status to idle.
+// If game!="" then set game.
+// If game!="" and url!="" then set the status type to streaming with the URL set.
+// if otherwise, set status to active, and no game.
+func (s *Session) UpdateStreamingStatus(idle int, game string, url string) (err error) {
+	gameType := GameTypeGame
+	if url != "" {
+		gameType = GameTypeStreaming
+	}
+	return s.UpdateStatusComplex(*newUpdateStatusData(idle, gameType, game, url))
+}
+
+// UpdateListeningStatus is used to set the user to "Listening to..."
+// If game!="" then set to what user is listening to
+// Else, set user to active and no game.
+func (s *Session) UpdateListeningStatus(game string) (err error) {
+	return s.UpdateStatusComplex(*newUpdateStatusData(0, GameTypeListening, game, ""))
 }
 
 // UpdateStatusComplex allows for sending the raw status update data untouched by discordgo.
@@ -371,18 +397,11 @@ func (s *Session) UpdateStatusComplex(usd UpdateStatusData) (err error) {
 	return
 }
 
-// UpdateStatus is used to update the user's status.
-// If idle>0 then set status to idle.
-// If game!="" then set game.
-// if otherwise, set status to active, and no game.
-func (s *Session) UpdateStatus(idle int, game string) (err error) {
-	return s.UpdateStreamingStatus(idle, game, "")
-}
-
 type requestGuildMembersData struct {
-	GuildID string `json:"guild_id"`
-	Query   string `json:"query"`
-	Limit   int    `json:"limit"`
+	GuildIDs  []string `json:"guild_id"`
+	Query     string   `json:"query"`
+	Limit     int      `json:"limit"`
+	Presences bool     `json:"presences"`
 }
 
 type requestGuildMembersOp struct {
@@ -392,22 +411,45 @@ type requestGuildMembersOp struct {
 
 // RequestGuildMembers requests guild members from the gateway
 // The gateway responds with GuildMembersChunk events
-// guildID  : The ID of the guild to request members of
-// query    : String that username starts with, leave empty to return all members
-// limit    : Max number of items to return, or 0 to request all members matched
-func (s *Session) RequestGuildMembers(guildID, query string, limit int) (err error) {
+// guildID   : Single Guild ID to request members of
+// query     : String that username starts with, leave empty to return all members
+// limit     : Max number of items to return, or 0 to request all members matched
+// presences : Whether to request presences of guild members
+func (s *Session) RequestGuildMembers(guildID string, query string, limit int, presences bool) (err error) {
+	data := requestGuildMembersData{
+		GuildIDs:  []string{guildID},
+		Query:     query,
+		Limit:     limit,
+		Presences: presences,
+	}
+	err = s.requestGuildMembers(data)
+	return
+}
+
+// RequestGuildMembersBatch requests guild members from the gateway
+// The gateway responds with GuildMembersChunk events
+// guildID   : Slice of guild IDs to request members of
+// query     : String that username starts with, leave empty to return all members
+// limit     : Max number of items to return, or 0 to request all members matched
+// presences : Whether to request presences of guild members
+func (s *Session) RequestGuildMembersBatch(guildIDs []string, query string, limit int, presences bool) (err error) {
+	data := requestGuildMembersData{
+		GuildIDs:  guildIDs,
+		Query:     query,
+		Limit:     limit,
+		Presences: presences,
+	}
+	err = s.requestGuildMembers(data)
+	return
+}
+
+func (s *Session) requestGuildMembers(data requestGuildMembersData) (err error) {
 	s.log(LogInformational, "called")
 
 	s.RLock()
 	defer s.RUnlock()
 	if s.wsConn == nil {
 		return ErrWSNotFound
-	}
-
-	data := requestGuildMembersData{
-		GuildID: guildID,
-		Query:   query,
-		Limit:   limit,
 	}
 
 	s.wsMutex.Lock()
@@ -479,7 +521,7 @@ func (s *Session) onEvent(messageType int, message []byte) (*Event, error) {
 	// Must immediately disconnect from gateway and reconnect to new gateway.
 	if e.Operation == 7 {
 		s.log(LogInformational, "Closing and reconnecting in response to Op7")
-		s.Close()
+		s.CloseWithCode(websocket.CloseServiceRestart)
 		s.reconnect()
 		return e, nil
 	}
@@ -508,7 +550,7 @@ func (s *Session) onEvent(messageType int, message []byte) (*Event, error) {
 		s.Lock()
 		s.LastHeartbeatAck = time.Now().UTC()
 		s.Unlock()
-		s.log(LogInformational, "got heartbeat ACK")
+		s.log(LogDebug, "got heartbeat ACK")
 		return e, nil
 	}
 
@@ -595,11 +637,7 @@ func (s *Session) ChannelVoiceJoin(gID, cID string, mute, deaf bool) (voice *Voi
 	voice.session = s
 	voice.Unlock()
 
-	// Send the request to Discord that we want to join the voice channel
-	data := voiceChannelJoinOp{4, voiceChannelJoinData{&gID, &cID, mute, deaf}}
-	s.wsMutex.Lock()
-	err = s.wsConn.WriteJSON(data)
-	s.wsMutex.Unlock()
+	err = s.ChannelVoiceJoinManual(gID, cID, mute, deaf)
 	if err != nil {
 		return
 	}
@@ -612,6 +650,33 @@ func (s *Session) ChannelVoiceJoin(gID, cID string, mute, deaf bool) (voice *Voi
 		return
 	}
 
+	return
+}
+
+// ChannelVoiceJoinManual initiates a voice session to a voice channel, but does not complete it.
+//
+// This should only be used when the VoiceServerUpdate will be intercepted and used elsewhere.
+//
+//    gID     : Guild ID of the channel to join.
+//    cID     : Channel ID of the channel to join, leave empty to disconnect.
+//    mute    : If true, you will be set to muted upon joining.
+//    deaf    : If true, you will be set to deafened upon joining.
+func (s *Session) ChannelVoiceJoinManual(gID, cID string, mute, deaf bool) (err error) {
+
+	s.log(LogInformational, "called")
+
+	var channelID *string
+	if cID == "" {
+		channelID = nil
+	} else {
+		channelID = &cID
+	}
+
+	// Send the request to Discord that we want to join the voice channel
+	data := voiceChannelJoinOp{4, voiceChannelJoinData{&gID, channelID, mute, deaf}}
+	s.wsMutex.Lock()
+	err = s.wsConn.WriteJSON(data)
+	s.wsMutex.Unlock()
 	return
 }
 
@@ -680,63 +745,47 @@ func (s *Session) onVoiceServerUpdate(st *VoiceServerUpdate) {
 	}
 }
 
-type identifyProperties struct {
-	OS              string `json:"$os"`
-	Browser         string `json:"$browser"`
-	Device          string `json:"$device"`
-	Referer         string `json:"$referer"`
-	ReferringDomain string `json:"$referring_domain"`
-}
-
-type identifyData struct {
-	Token          string             `json:"token"`
-	Properties     identifyProperties `json:"properties"`
-	LargeThreshold int                `json:"large_threshold"`
-	Compress       bool               `json:"compress"`
-	Shard          *[2]int            `json:"shard,omitempty"`
-}
-
 type identifyOp struct {
-	Op   int          `json:"op"`
-	Data identifyData `json:"d"`
+	Op   int      `json:"op"`
+	Data Identify `json:"d"`
 }
 
 // identify sends the identify packet to the gateway
 func (s *Session) identify() error {
+	s.log(LogDebug, "called")
 
-	properties := identifyProperties{runtime.GOOS,
-		"Discordgo v" + VERSION,
-		"",
-		"",
-		"",
+	// TODO: This is a temporary block of code to help
+	// maintain backwards compatability
+	if s.Compress == false {
+		s.Identify.Compress = false
 	}
 
-	data := identifyData{s.Token,
-		properties,
-		250,
-		s.Compress,
-		nil,
+	// TODO: This is a temporary block of code to help
+	// maintain backwards compatability
+	if s.Token != "" && s.Identify.Token == "" {
+		s.Identify.Token = s.Token
 	}
 
+	// TODO: Below block should be refactored so ShardID and ShardCount
+	// can be deprecated and their usage moved to the Session.Identify
+	// struct
 	if s.ShardCount > 1 {
 
 		if s.ShardID >= s.ShardCount {
 			return ErrWSShardBounds
 		}
 
-		data.Shard = &[2]int{s.ShardID, s.ShardCount}
+		s.Identify.Shard = &[2]int{s.ShardID, s.ShardCount}
 	}
 
-	op := identifyOp{2, data}
-
+	// Send Identify packet to Discord
+	op := identifyOp{2, s.Identify}
+	s.log(LogDebug, "Identify Packet: \n%#v", op)
 	s.wsMutex.Lock()
 	err := s.wsConn.WriteJSON(op)
 	s.wsMutex.Unlock()
-	if err != nil {
-		return err
-	}
 
-	return nil
+	return err
 }
 
 func (s *Session) reconnect() {
@@ -795,8 +844,15 @@ func (s *Session) reconnect() {
 }
 
 // Close closes a websocket and stops all listening/heartbeat goroutines.
+// TODO: Add support for Voice WS/UDP
+func (s *Session) Close() error {
+	return s.CloseWithCode(websocket.CloseNormalClosure)
+}
+
+// CloseWithCode closes a websocket using the provided closeCode and stops all
+// listening/heartbeat goroutines.
 // TODO: Add support for Voice WS/UDP connections
-func (s *Session) Close() (err error) {
+func (s *Session) CloseWithCode(closeCode int) (err error) {
 
 	s.log(LogInformational, "called")
 	s.Lock()
@@ -818,7 +874,7 @@ func (s *Session) Close() (err error) {
 		// To cleanly close a connection, a client should send a close
 		// frame and wait for the server to close the connection.
 		s.wsMutex.Lock()
-		err := s.wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		err := s.wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(closeCode, ""))
 		s.wsMutex.Unlock()
 		if err != nil {
 			s.log(LogInformational, "error closing websocket, %s", err)

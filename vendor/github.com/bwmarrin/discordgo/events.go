@@ -10,15 +10,15 @@ import (
 //go:generate go run tools/cmd/eventhandlers/main.go
 
 // Connect is the data for a Connect event.
-// This is a sythetic event and is not dispatched by Discord.
+// This is a synthetic event and is not dispatched by Discord.
 type Connect struct{}
 
 // Disconnect is the data for a Disconnect event.
-// This is a sythetic event and is not dispatched by Discord.
+// This is a synthetic event and is not dispatched by Discord.
 type Disconnect struct{}
 
 // RateLimit is the data for a RateLimit event.
-// This is a sythetic event and is not dispatched by Discord.
+// This is a synthetic event and is not dispatched by Discord.
 type RateLimit struct {
 	*TooManyRequests
 	URL string
@@ -70,6 +70,7 @@ type ChannelDelete struct {
 type ChannelPinsUpdate struct {
 	LastPinTimestamp string `json:"last_pin_timestamp"`
 	ChannelID        string `json:"channel_id"`
+	GuildID          string `json:"guild_id,omitempty"`
 }
 
 // GuildCreate is the data for a GuildCreate event.
@@ -138,8 +139,11 @@ type GuildEmojisUpdate struct {
 
 // A GuildMembersChunk is the data for a GuildMembersChunk event.
 type GuildMembersChunk struct {
-	GuildID string    `json:"guild_id"`
-	Members []*Member `json:"members"`
+	GuildID    string      `json:"guild_id"`
+	Members    []*Member   `json:"members"`
+	ChunkIndex int         `json:"chunk_index"`
+	ChunkCount int         `json:"chunk_count"`
+	Presences  []*Presence `json:"presences,omitempty"`
 }
 
 // GuildIntegrationsUpdate is the data for a GuildIntegrationsUpdate event.
@@ -161,11 +165,14 @@ type MessageCreate struct {
 // MessageUpdate is the data for a MessageUpdate event.
 type MessageUpdate struct {
 	*Message
+	// BeforeUpdate will be nil if the Message was not previously cached in the state cache.
+	BeforeUpdate *Message `json:"-"`
 }
 
 // MessageDelete is the data for a MessageDelete event.
 type MessageDelete struct {
 	*Message
+	BeforeDelete *Message `json:"-"`
 }
 
 // MessageReactionAdd is the data for a MessageReactionAdd event.
@@ -212,6 +219,7 @@ type RelationshipRemove struct {
 type TypingStart struct {
 	UserID    string `json:"user_id"`
 	ChannelID string `json:"channel_id"`
+	GuildID   string `json:"guild_id,omitempty"`
 	Timestamp int    `json:"timestamp"`
 }
 
@@ -250,4 +258,11 @@ type VoiceStateUpdate struct {
 type MessageDeleteBulk struct {
 	Messages  []string `json:"ids"`
 	ChannelID string   `json:"channel_id"`
+	GuildID   string   `json:"guild_id"`
+}
+
+// WebhooksUpdate is the data for a WebhooksUpdate event
+type WebhooksUpdate struct {
+	GuildID   string `json:"guild_id"`
+	ChannelID string `json:"channel_id"`
 }
