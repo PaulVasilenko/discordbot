@@ -1,0 +1,46 @@
+# github.com/BurntSushi/toml v0.3.1
+github.com/BurntSushi/toml
+# github.com/bwmarrin/discordgo v0.22.1-0.20200825144245-8c5ca3de95d7
+## explicit
+github.com/bwmarrin/discordgo
+# github.com/facebookgo/flagconfig v0.0.0-20160719174438-22cbba9d3aa2
+## explicit
+# github.com/go-sql-driver/mysql v1.3.1-0.20170512152933-382e13d099fc
+## explicit
+github.com/go-sql-driver/mysql
+# github.com/gorilla/websocket v1.4.0
+## explicit
+github.com/gorilla/websocket
+# github.com/jinzhu/configor v1.2.1
+## explicit
+github.com/jinzhu/configor
+# github.com/patrickmn/go-cache v2.0.1-0.20170418232947-7ac151875ffb+incompatible
+## explicit
+github.com/patrickmn/go-cache
+# github.com/pkg/errors v0.9.1
+## explicit
+github.com/pkg/errors
+# github.com/sirupsen/logrus v1.7.0
+## explicit
+github.com/sirupsen/logrus
+# golang.org/x/crypto v0.0.0-20181030102418-4d3f4d9ffa16
+## explicit
+golang.org/x/crypto/internal/subtle
+golang.org/x/crypto/nacl/secretbox
+golang.org/x/crypto/poly1305
+golang.org/x/crypto/salsa20/salsa
+# golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
+## explicit
+golang.org/x/sync/errgroup
+# golang.org/x/sys v0.0.0-20191026070338-33540a1f6037
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+# gopkg.in/mgo.v2 v2.0.0-20160818020120-3f83fa500528
+## explicit
+gopkg.in/mgo.v2
+gopkg.in/mgo.v2/bson
+gopkg.in/mgo.v2/internal/json
+gopkg.in/mgo.v2/internal/sasl
+gopkg.in/mgo.v2/internal/scram
+# gopkg.in/yaml.v2 v2.2.2
+gopkg.in/yaml.v2

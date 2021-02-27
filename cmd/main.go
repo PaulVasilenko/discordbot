@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/paulvasilenko/discordbot/discordbot/haiku"
 	"github.com/paulvasilenko/discordbot/discordbot/sdr"
 
 	"github.com/bwmarrin/discordgo"
@@ -97,6 +98,9 @@ func main() {
 
 	h := homog.NewHomog()
 	dg.AddHandler(h.MessageCreate)
+
+	haiku := haiku.NewHaiku()
+	dg.AddHandler(haiku.MessageCreate)
 
 	textToSpeech := tts.NewTTS(&tts.TTSClient{
 		Client:     &http.Client{},
