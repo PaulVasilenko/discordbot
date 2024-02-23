@@ -24,11 +24,9 @@ import (
 	"github.com/paulvasilenko/discordbot/discordbot/confify"
 	"github.com/paulvasilenko/discordbot/discordbot/homog"
 	"github.com/paulvasilenko/discordbot/discordbot/quoter"
-	"github.com/paulvasilenko/discordbot/discordbot/racing"
 	"github.com/paulvasilenko/discordbot/discordbot/smileystats"
 	"github.com/paulvasilenko/discordbot/discordbot/tts"
 	log "github.com/sirupsen/logrus"
-	"gopkg.in/mgo.v2"
 )
 
 type Config struct {
@@ -110,14 +108,6 @@ func main() {
 	dg.AddHandler(textToSpeech.MessageReactionAdd)
 
 	mysqlConn := initMysql(conf)
-	mongodbConn := initMongo(conf)
-
-	racingStruct, err := racing.NewRacing(mongodbConn, mysqlConn)
-	if err != nil {
-		log.Println(err)
-	} else {
-		dg.AddHandler(racingStruct.MessageCreate)
-	}
 
 	emotesStats := smileystats.NewSmileyStats(mysqlConn, conf.SmileyStats.Blacklist)
 	dg.AddHandler(emotesStats.MessageCreate)
@@ -146,7 +136,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	sdrPlugin, err := sdr.NewSDR(mongodbConn, texts, gifts)
+	sdrPlugin, err := sdr.NewSDR(texts, gifts)
 	if err != nil {
 		log.Println(err)
 	} else {
@@ -182,14 +172,6 @@ func initMysql(conf Config) *sql.DB {
 	db.SetConnMaxLifetime(1 * time.Second)
 
 	return db
-}
-
-func initMongo(conf Config) *mgo.Session {
-	session, err := mgo.Dial("mongodb://" + conf.Mongo.Host + ":" + conf.Mongo.Port)
-	if err != nil {
-		log.Fatalf("failed to init mongodb connection: %v", err)
-	}
-	return session
 }
 
 func ready(s *discordgo.Session, event *discordgo.Ready) {

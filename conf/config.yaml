@@ -10,9 +10,6 @@ SmileyStats:
     th: 469835872716455936
     tw: 469835872188235796
     kakera: 469835869059153940
-Mongo:
-  Host: mongodb
-  Port: 27017
 Mysql:
   Host: mysqldb
   Port: 3306

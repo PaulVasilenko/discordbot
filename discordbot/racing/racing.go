@@ -55,6 +55,7 @@ type Racing struct {
 	cache       *cache.Cache
 }
 
+// DEPRECATED: currently bot don't support Mongo, so this package doesn't work as well
 func NewRacing(mgoConn *mgo.Session, mysqlConn *sql.DB) (*Racing, error) {
 	if err := mgoConn.DB(MongoDBRacing).C(MongoCollectionRacing).EnsureIndex(mgo.Index{
 		Key:      []string{"id"},

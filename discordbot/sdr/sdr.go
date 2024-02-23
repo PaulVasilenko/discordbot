@@ -7,18 +7,10 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"gopkg.in/mgo.v2"
-)
-
-const (
-	mongoDBSDR           = "sdr"
-	mongoCollectionGifts = "gifts"
 )
 
 // SDR represents SDR plugin
 type SDR struct {
-	mongoDbConn *mgo.Session
-
 	texts map[int]string
 	gifts map[int]Gift
 }
@@ -38,11 +30,10 @@ type Gift struct {
 	Description string `bson:"description" json:"desc"`
 }
 
-func NewSDR(mgoConn *mgo.Session, texts map[int]string, gifts map[int]Gift) (*SDR, error) {
+func NewSDR(texts map[int]string, gifts map[int]Gift) (*SDR, error) {
 	return &SDR{
-		mongoDbConn: mgoConn,
-		texts:       texts,
-		gifts:       gifts,
+		texts: texts,
+		gifts: gifts,
 	}, nil
 }
 
