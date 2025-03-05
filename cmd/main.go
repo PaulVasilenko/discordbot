@@ -13,20 +13,17 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
-	"github.com/paulvasilenko/discordbot/discordbot/haiku"
-	"github.com/paulvasilenko/discordbot/discordbot/sdr"
-
 	"github.com/bwmarrin/discordgo"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jinzhu/configor"
 	"github.com/paulvasilenko/discordbot/discordbot/confify"
+	"github.com/paulvasilenko/discordbot/discordbot/haiku"
 	"github.com/paulvasilenko/discordbot/discordbot/homog"
-	"github.com/paulvasilenko/discordbot/discordbot/quoter"
+	"github.com/paulvasilenko/discordbot/discordbot/sdr"
 	"github.com/paulvasilenko/discordbot/discordbot/smileystats"
 	"github.com/paulvasilenko/discordbot/discordbot/tts"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 type Config struct {
@@ -91,9 +88,6 @@ func main() {
 		}
 	}()
 
-	q := quoter.NewQuoter()
-	dg.AddHandler(q.MessageReactionAdd)
-
 	h := homog.NewHomog()
 	dg.AddHandler(h.MessageCreate)
 
@@ -151,7 +145,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	go signalHandler(cancel)
 
-	log.Println("PandaBot is now running.  Press CTRL-C to exit.")
+	log.Println("PandaBot is now running, Version 0.0.1.  Press CTRL-C to exit.")
 	<-ctx.Done()
 	return
 }
@@ -175,7 +169,7 @@ func initMysql(conf Config) *sql.DB {
 }
 
 func ready(s *discordgo.Session, event *discordgo.Ready) {
-	err := s.UpdateStatus(0, "Dirty Games")
+	err := s.UpdateCustomStatus("Dirty Games")
 	if err != nil {
 		fmt.Println("Error updating status:", err)
 	}
